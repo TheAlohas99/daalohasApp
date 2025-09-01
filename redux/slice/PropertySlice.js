@@ -1,13 +1,26 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import { BASE_URL } from "../config";
+
 
 export const getProperty = createAsyncThunk(
-  "property/getProperty",
-  async () => {
-    const res = await axios.get(`${baseUrl}/api/v1/getAllProperty`);
-    return res.data;
+  "property/getAllProperty",
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.get(`${BASE_URL}/api/v1/all-property-list`);
+      console.log("API RESPONSE:", data);   
+      return data.allProperty;              
+    } catch (error) {
+      console.log("API ERROR:", error.message);
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch property"
+      );
+    }
   }
 );
+
+
+
 
 const reservationSlice = createSlice({
   name: "property",

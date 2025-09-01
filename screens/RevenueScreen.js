@@ -46,4 +46,3 @@ const styles = StyleSheet.create({
   nightBar: { width: 12, backgroundColor: '#FF5252', marginTop: 4, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   barLabel: { marginTop: 8, fontSize: 12 },
 });
-
