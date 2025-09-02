@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,14 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker'; 
 import { useDispatch, useSelector } from 'react-redux';
 import { getProperty } from '../redux/slice/PropertySlice';
 
-
 const properties = [
-  { name: 'Tranquil Peaks Penthouse', baseRate: 7100 },
-  { name: 'Hibiscus Oasis - EL REINO L2', baseRate: 7500 },
-  { name: 'El Reino L2 - 2 BHK', baseRate: 5200 },
+  { id: 1, name: 'Tranquil Peaks Penthouse', baseRate: 7100 },
+  { id: 2, name: 'Hibiscus Oasis - EL REINO L2', baseRate: 7500 },
+  { id: 3, name: 'El Reino L2 - 2 BHK', baseRate: 5200 },
 ];
 
 const PROP_COL_WIDTH = 160;
@@ -23,14 +23,17 @@ const DAY_HEADER_HEIGHT = 48;
 const CELL_HEIGHT = 40;
 
 export default function AvailabilityScreen() {
-  const dispatch = useDispatch()
-  const {data} = useSelector((state)=>state.property)
-  console.log(data)
+  const dispatch = useDispatch();
+  const { data } = useSelector((state) => state.property);
+
   const screenWidth = Dimensions.get('window').width;
   const dayWidth = (screenWidth - PROP_COL_WIDTH) / 7;
-  const scrollRef = React.useRef(null);
+  const scrollRef = useRef(null);
 
-  const dates = React.useMemo(() => {
+  // 🔽 dropdown state
+  const [selectedProperty, setSelectedProperty] = useState("all");
+
+  const dates = useMemo(() => {
     const today = new Date();
     const list = [];
     for (let i = -DAY_RANGE; i <= DAY_RANGE; i += 1) {
@@ -58,16 +61,14 @@ export default function AvailabilityScreen() {
     month: 'short',
     year: 'numeric',
   });
-  const [currentMonth, setCurrentMonth] = React.useState(todayLabel);
+  const [currentMonth, setCurrentMonth] = useState(todayLabel);
 
-  const getMonthLabel = React.useCallback(
-    index => {
+  const getMonthLabel = useCallback(
+    (index) => {
       const start = dates[index];
       const end = dates[index + 6];
       if (!start || !end) return '';
-      const startMonth = start.toLocaleDateString(undefined, {
-        month: 'short',
-      });
+      const startMonth = start.toLocaleDateString(undefined, { month: 'short' });
       const startYear = start.getFullYear();
       const endMonth = end.toLocaleDateString(undefined, { month: 'short' });
       const endYear = end.getFullYear();
@@ -79,10 +80,10 @@ export default function AvailabilityScreen() {
       }
       return `${startMonth} ${startYear} / ${endMonth} ${endYear}`;
     },
-    [dates],
+    [dates]
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (scrollRef.current) {
       const index = DAY_RANGE;
       scrollRef.current.scrollTo({ x: dayWidth * index, animated: false });
@@ -90,31 +91,61 @@ export default function AvailabilityScreen() {
     }
   }, [dayWidth, getMonthLabel]);
 
-  const onScroll = e => {
+  const onScroll = (e) => {
     const offsetX = e.nativeEvent.contentOffset.x;
     const firstIndex = Math.floor(offsetX / dayWidth);
     setCurrentMonth(getMonthLabel(firstIndex));
   };
 
-  const isReserved = date =>
-    reservations.find(r => date >= r.start && date <= r.end);
+  const isReserved = (date) =>
+    reservations.find((r) => date >= r.start && date <= r.end);
 
-  useEffect(()=>{
-      dispatch(getProperty())
-  },[])
+  useEffect(() => {
+    dispatch(getProperty());
+  }, [dispatch]);
+
+  const filteredProperties =
+    selectedProperty === "all"
+      ? properties
+      : properties.filter((p) => p.id === selectedProperty);
 
   return (
     <View style={styles.container}>
+      {/* 🔽 Dropdown */}
+      {/* <View style={styles.dropdownWrapper}>
+        <Picker
+          selectedValue={selectedProperty}
+          onValueChange={(itemValue) => setSelectedProperty(itemValue)}
+        >
+          <Picker.Item label="All Properties" value="all" />
+          {properties.map((p) => (
+            <Picker.Item key={p.id} label={p?.name} value={p.id} />
+          ))}
+        </Picker>
+      </View> */}
+      <View>
+        {
+          data.map((prop)=>{
+            return(
+              <Text>{prop.title}</Text>
+            )
+          })
+        }
+      </View>
+
+      {/* Month Header */}
       <View style={styles.monthHeaderRow}>
         <View style={{ width: PROP_COL_WIDTH }} />
         <View style={styles.monthHeaderCell}>
           <Text style={styles.monthText}>{currentMonth}</Text>
         </View>
       </View>
+
+      {/* Table */}
       <View style={styles.tableWrapper}>
         <View style={styles.propColumn}>
           <View style={styles.dayPlaceholder} />
-          {properties.map(p => (
+          {filteredProperties.map((p) => (
             <View key={p.name} style={styles.propCell}>
               <Text style={styles.propText}>{p.name}</Text>
             </View>
@@ -128,8 +159,9 @@ export default function AvailabilityScreen() {
           showsHorizontalScrollIndicator={false}
         >
           <View>
+            {/* Days Header */}
             <View style={styles.headerRow}>
-              {dates.map(d => (
+              {dates.map((d) => (
                 <View
                   key={d.toISOString()}
                   style={[styles.dayCell, { width: dayWidth }]}
@@ -141,7 +173,9 @@ export default function AvailabilityScreen() {
                 </View>
               ))}
             </View>
-            {properties.map((p, pIdx) => (
+
+            {/* Properties Rows */}
+            {filteredProperties.map((p, pIdx) => (
               <View
                 key={p.name}
                 style={[styles.row, { width: dayWidth * dates.length }]}
@@ -149,18 +183,23 @@ export default function AvailabilityScreen() {
                 {dates.map((d, idx) => {
                   const reservation = pIdx === 0 ? isReserved(d) : null;
                   return (
-                    <View key={idx} style={[styles.dayCell, { width: dayWidth }]}> 
+                    <View
+                      key={idx}
+                      style={[styles.dayCell, { width: dayWidth }]}
+                    >
                       {!reservation && <Text>{p.baseRate}</Text>}
                     </View>
                   );
                 })}
+
+                {/* Reservation bars only for first property */}
                 {pIdx === 0 &&
-                  reservations.map(res => {
+                  reservations.map((res) => {
                     const startIndex = dates.findIndex(
-                      d => d.toDateString() === res.start.toDateString(),
+                      (d) => d.toDateString() === res.start.toDateString()
                     );
                     const endIndex = dates.findIndex(
-                      d => d.toDateString() === res.end.toDateString(),
+                      (d) => d.toDateString() === res.end.toDateString()
                     );
                     if (startIndex === -1 || endIndex === -1) return null;
                     const left = startIndex * dayWidth + dayWidth / 2;
@@ -179,20 +218,26 @@ export default function AvailabilityScreen() {
           </View>
         </ScrollView>
       </View>
-      <Text>{JSON.stringify(data,null,2)}</Text>
+
+      {/* <Text>{JSON.stringify(data, null, 2)}</Text> */}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', padding: 16 },
+  dropdownWrapper: {
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 6,
+  },
   monthHeaderRow: {
     flexDirection: 'row',
     height: MONTH_HEADER_HEIGHT,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderColor: '#ccc',
-    
   },
   monthHeaderCell: {
     flex: 1,
@@ -238,7 +283,7 @@ const styles = StyleSheet.create({
   },
   dayText: { fontWeight: '600' },
   dateText: { fontSize: 12, color: '#555' },
-  propText: { fontWeight: '500' ,fontSize: 12},
+  propText: { fontWeight: '500', fontSize: 12 },
   reservationBar: {
     position: 'absolute',
     top: 4,
@@ -246,7 +291,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#78ea72ff',
     justifyContent: 'center',
     paddingLeft: 4,
-    borderRadius: 5
+    borderRadius: 5,
   },
   resText: { fontSize: 10, fontWeight: '500' },
 });
