@@ -1,24 +1,34 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
-import { BASE_URL } from "../config";
+
+const baseUrl = "https://dabackend-z7p2s.ondigitalocean.app";
 
 
 export const getProperty = createAsyncThunk(
   "property/getAllProperty",
   async (_, { rejectWithValue }) => {
     try {
-      const { data } = await axios.get(`${BASE_URL}/api/v1/all-property-list`);
-      console.log("API RESPONSE:", data);   
-      return data.allProperty;              
+      const config = {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        withCredentials: true,
+      };
+
+      const { data } = await axios.get(
+        `${baseUrl}/api/v1/all-property-list`,
+        config
+      );
+
+      console.log(data)
+      return data.allProperty;
     } catch (error) {
-      console.log("API ERROR:", error.message);
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch property"
       );
     }
   }
 );
-
 
 
 
