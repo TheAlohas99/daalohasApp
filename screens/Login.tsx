@@ -13,7 +13,7 @@ type LoginProps = {
   navigation: any;
 };
 
-export default function LoginScreen({ navigation, setIsLoggedIn }: LoginProps) {
+export default function LoginScreen({ navigation: _navigation, setIsLoggedIn }: LoginProps) {
   const [mobile, setMobile] = useState("");
 
   const handleLogin = () => {

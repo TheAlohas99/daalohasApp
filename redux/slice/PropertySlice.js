@@ -1,6 +1,9 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
+// Read the API base URL from environment variables
+const baseUrl = process.env.API_BASE_URL;
+
 export const getProperty = createAsyncThunk(
   "property/getProperty",
   async () => {
