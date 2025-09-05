@@ -6,20 +6,29 @@ import React, {
   useRef,
   useCallback,
 } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Dimensions,
+  FlatList,
+} from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useDispatch, useSelector } from 'react-redux';
 import { getProperty } from '../redux/slice/PropertySlice';
 
 const PROP_COL_WIDTH = 160;
-const DAY_RANGE = 180;
+const VISIBLE_DAYS = 180;
 const MONTH_HEADER_HEIGHT = 24;
 const DAY_HEADER_HEIGHT = 48;
-const CELL_HEIGHT = 40;
+const ROW_HEIGHT = 60;
 
 export default function AvailabilityScreen() {
   const dispatch = useDispatch();
   const { data: properties = [] } = useSelector(state => state.property);
+  const {Allreservation} = useSelector((state)=>state.reservation)
+  console.log(Allreservation)
 
   const screenWidth = Dimensions.get('window').width;
   const dayWidth = (screenWidth - PROP_COL_WIDTH) / 7;
@@ -27,11 +36,13 @@ export default function AvailabilityScreen() {
 
   const [selectedProperty, setSelectedProperty] = useState('all');
 
-  // Generate date range
+  const getId = p => String(p?._id || '');
+
+  // Generate 180 days starting today
   const dates = useMemo(() => {
     const today = new Date();
     const list = [];
-    for (let i = -DAY_RANGE; i <= DAY_RANGE; i++) {
+    for (let i = 0; i < VISIBLE_DAYS; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       list.push(d);
@@ -46,34 +57,22 @@ export default function AvailabilityScreen() {
   const [currentMonth, setCurrentMonth] = useState(todayLabel);
 
   const getMonthLabel = useCallback(
-    index => {
-      const start = dates[index];
-      const end = dates[index + 6];
+    firstIndex => {
+      const start = dates[firstIndex] || dates[0];
+      const end =
+        dates[Math.min(firstIndex + 6, dates.length - 1)] ||
+        dates[dates.length - 1];
       if (!start || !end) return '';
-      const startMonth = start.toLocaleDateString(undefined, {
-        month: 'short',
-      });
-      const startYear = start.getFullYear();
-      const endMonth = end.toLocaleDateString(undefined, { month: 'short' });
-      const endYear = end.getFullYear();
-      if (startMonth === endMonth && startYear === endYear) {
-        return `${startMonth} ${startYear}`;
-      }
-      if (startYear === endYear) {
-        return `${startMonth} / ${endMonth} ${startYear}`;
-      }
-      return `${startMonth} ${startYear} / ${endMonth} ${endYear}`;
+      const sM = start.toLocaleDateString(undefined, { month: 'short' });
+      const sY = start.getFullYear();
+      const eM = end.toLocaleDateString(undefined, { month: 'short' });
+      const eY = end.getFullYear();
+      if (sM === eM && sY === eY) return `${sM} ${sY}`;
+      if (sY === eY) return `${sM} / ${eM} ${sY}`;
+      return `${sM} ${sY} / ${eM} ${eY}`;
     },
     [dates],
   );
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      const index = DAY_RANGE;
-      scrollRef.current.scrollTo({ x: dayWidth * index, animated: false });
-      setCurrentMonth(getMonthLabel(index));
-    }
-  }, [dayWidth, getMonthLabel]);
 
   const onScroll = e => {
     const offsetX = e.nativeEvent.contentOffset.x;
@@ -85,13 +84,11 @@ export default function AvailabilityScreen() {
     dispatch(getProperty());
   }, [dispatch]);
 
-  const filteredProperties =
-  selectedProperty === 'all'
-    ? properties.filter(p => p && p._id) 
-    : properties.filter(p => p && p._id === selectedProperty);
-
-
-  console.log('filteredProperties', filteredProperties);
+  const filteredProperties = useMemo(() => {
+    const list = Array.isArray(properties) ? properties : [];
+    if (selectedProperty === 'all') return list.filter(p => getId(p));
+    return list.filter(p => getId(p) === selectedProperty);
+  }, [properties, selectedProperty]);
 
   return (
     <View style={styles.container}>
@@ -99,67 +96,102 @@ export default function AvailabilityScreen() {
       <View style={styles.dropdownWrapper}>
         <Picker
           selectedValue={selectedProperty}
-          onValueChange={itemValue => setSelectedProperty(itemValue)}
+          onValueChange={val => setSelectedProperty(val)}
         >
           <Picker.Item label="All Properties" value="all" />
           {properties.map(p => (
-            <Picker.Item key={p._id} label={p.title || p.name} value={p._id} />
+            <Picker.Item
+              key={getId(p)}
+              label={p.title ?? '(no title)'}
+              value={getId(p)}
+            />
           ))}
         </Picker>
       </View>
 
-      {/* Calendar Table */}
-      <View style={{ flex: 1 }}>
-        <View style={styles.monthHeaderRow}>
-          <View style={{ width: PROP_COL_WIDTH }} />
-          <View style={styles.monthHeaderCell}>
-            <Text style={styles.monthText}>{currentMonth}</Text>
-          </View>
+      {/* Month header */}
+      <View style={styles.monthHeaderRow}>
+        <View style={{ width: PROP_COL_WIDTH }} />
+        <View style={styles.monthHeaderCell}>
+          <Text style={styles.monthText}>{currentMonth}</Text>
         </View>
+      </View>
 
-        <View style={styles.tableWrapper}>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            onScroll={onScroll}
-            scrollEventThrottle={16}
-            showsHorizontalScrollIndicator={false}
+      {/* Table */}
+      <View style={styles.tableWrapper}>
+        {/* Left column: Property names */}
+        <View style={{ width: PROP_COL_WIDTH }}>
+          <View
+            style={[
+              styles.headerRow,
+              { justifyContent: 'center', alignItems: 'center' },
+            ]}
           >
-            <View>
-              {/* Days Header */}
-              <View style={styles.headerRow}>
-                {dates.map(d => (
-                  <View
-                    key={d.toISOString()}
-                    style={[styles.dayCell, { width: dayWidth }]}
-                  >
-                    <Text style={styles.dayText}>
-                      {d.toLocaleDateString(undefined, { weekday: 'short' })}
-                    </Text>
-                    <Text style={styles.dateText}>{d.getDate()}</Text>
-                  </View>
-                ))}
-              </View>
+            <Text style={{ fontWeight: '600' }}>Properties</Text>
+          </View>
 
-              {/* Properties Rows */}
-              {filteredProperties.map(p => (
-              <View
-                key={p._id}
-                style={[styles.row, { width: dayWidth * dates.length }]}
-              >
-                {dates.map((d, idx) => (
-                  <View
-                    key={idx}
-                    style={[styles.dayCell, { width: dayWidth }]}
-                  >
-                    <Text>{p.baseRate ?? '-'}</Text>
-                  </View>
-                ))}
+          <FlatList
+            data={filteredProperties}
+            keyExtractor={item => getId(item)}
+            renderItem={({ item }) => (
+              <View style={styles.leftRow}>
+                <Text style={{ color: '#111' }} numberOfLines={1}>
+                  {item.title ?? '(no title)'}
+                </Text>
               </View>
-            ))}
-            </View>
-          </ScrollView>
+            )}
+            style={{
+              maxHeight: ROW_HEIGHT * Math.min(10, filteredProperties.length),
+            }}
+          />
         </View>
+
+        {/* Right side: days */}
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          showsHorizontalScrollIndicator={true}
+          style={{ flex: 1 }}
+        >
+          <View>
+            {/* Days header */}
+            <View style={styles.headerRow}>
+              {dates.map(d => (
+                <View
+                  key={d.toISOString()}
+                  style={[styles.dayCell, { width: dayWidth }]}
+                >
+                  <Text style={styles.dayText}>
+                    {d.toLocaleDateString(undefined, { weekday: 'short' })}
+                  </Text>
+                  <Text style={styles.dateText}>{d.getDate()}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Property rows */}
+            <FlatList
+              data={filteredProperties}
+              keyExtractor={item => `row-${getId(item)}`}
+              renderItem={({ item }) => (
+                <View style={[styles.row, { width: dayWidth * dates.length }]}>
+                  {dates.map((d, idx) => (
+                    <View
+                      key={`${getId(item)}-${idx}`}
+                      style={[styles.dayCell, { width: dayWidth }]}
+                    >
+                      <Text style={{ color: '#111' }}>
+                        {item.baseRate ?? '-'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            />
+          </View>
+        </ScrollView>
       </View>
     </View>
   );
@@ -180,24 +212,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#ccc',
   },
-  monthHeaderCell: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tableWrapper: { flexDirection: 'row' },
+  monthHeaderCell: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  monthText: { fontWeight: '600', color: '#111' },
+  tableWrapper: { flexDirection: 'row', flex: 1 },
   headerRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderColor: '#ccc',
     height: DAY_HEADER_HEIGHT,
   },
+  leftRow: {
+    height: ROW_HEIGHT,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+  },
   row: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderColor: '#eee',
-    position: 'relative',
-    height: CELL_HEIGHT,
+    height: ROW_HEIGHT,
   },
   dayCell: {
     padding: 3,
@@ -205,10 +240,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRightWidth: 1,
     borderColor: '#eee',
-    height: CELL_HEIGHT,
+    height: ROW_HEIGHT,
     overflow: 'hidden',
   },
-  dayText: { fontWeight: '600' },
+  dayText: { fontWeight: '600', color: '#111' },
   dateText: { fontSize: 12, color: '#555' },
-  monthText: { fontWeight: '600' },
 });
