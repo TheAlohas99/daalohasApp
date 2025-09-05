@@ -1,11 +1,14 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
+const baseUrl = "https://dabackend-z7p2s.ondigitalocean.app";
+
+
 // Async thunk to fetch data from Node.js API
 export const fetchReservations = createAsyncThunk(
   "reservations/fetchReservations",
   async () => {
-    const res = await axios.get("http://your-node-api.com/api/reservations");
+    const res = await axios.get(`${baseUrl}/api/v1/all-reservation`);
     return res.data;
   }
 );
@@ -13,7 +16,7 @@ export const fetchReservations = createAsyncThunk(
 const reservationSlice = createSlice({
   name: "reservations",
   initialState: {
-    data: [],
+    AllReservation: [],
     loading: false,
     error: null,
   },
@@ -26,7 +29,7 @@ const reservationSlice = createSlice({
       })
       .addCase(fetchReservations.fulfilled, (state, action) => {
         state.loading = false;
-        state.data = action.payload;
+        state.AllReservation = action.payload;
       })
       .addCase(fetchReservations.rejected, (state, action) => {
         state.loading = false;
