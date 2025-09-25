@@ -1,20 +1,21 @@
-import React, { useState } from "react";
-import { View, TextInput, Button, Text } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useState } from 'react';
+import { View, TextInput, Button, Text } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiFetch } from '../utils/api';
 
 type LoginProps = {
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const LoginScreen = ({ setIsLoggedIn }: LoginProps) => {
-  const [mobile, setMobile] = useState("");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState("mobile");
-  const [message, setMessage] = useState("");
+  const [mobile, setMobile] = useState('');
+  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState('mobile');
+  const [message, setMessage] = useState('');
 
   // ✅ Utility: format number with +91
   const formatMobile = (num: string) => {
-    if (!num.startsWith("+91")) {
+    if (!num.startsWith('+91')) {
       return `+91${num}`;
     }
     return num;
@@ -26,24 +27,24 @@ const LoginScreen = ({ setIsLoggedIn }: LoginProps) => {
       const formattedMobile = formatMobile(mobile);
 
       const response = await fetch(
-        "https://dabackend-z7p2s.ondigitalocean.app/api/v1/send-otp",
+        'https://api.daalohas.com/api/v1/send-otp',
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mobile: formattedMobile }),
-        }
+        },
       );
 
       const data = await response.json();
       if (data.success) {
-        setStep("otp");
-        setMessage("OTP sent to your mobile ✅");
+        setStep('otp');
+        setMessage('OTP sent to your mobile ✅');
       } else {
         setMessage(data.message);
       }
     } catch (error) {
       console.error(error);
-      setMessage("Error sending OTP");
+      setMessage('Error sending OTP');
     }
   };
 
@@ -52,22 +53,27 @@ const LoginScreen = ({ setIsLoggedIn }: LoginProps) => {
     try {
       const formattedMobile = formatMobile(mobile);
 
-      const response = await fetch(
-        "https://dabackend-z7p2s.ondigitalocean.app/api/v1/otp-verify",
+      const response = await apiFetch(
+        'https://api.daalohas.com/api/v1/otp-verify',
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mobile: formattedMobile, otp }),
-        }
+        },
       );
 
       const data = await response.json();
       console.log(data);
       if (data.success) {
-        setMessage("Login successful 🎉");
+        setMessage('Login successful 🎉');
 
         // Store token
-        await AsyncStorage.setItem("token", data.token);
+        await AsyncStorage.setItem('token', data.token);
+        const userData = {
+          ...data.user,
+        };
+
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
 
         // 🔑 Switch to HomeTabs
         setIsLoggedIn(true);
@@ -76,13 +82,13 @@ const LoginScreen = ({ setIsLoggedIn }: LoginProps) => {
       }
     } catch (error) {
       console.error(error);
-      setMessage("Error verifying OTP");
+      setMessage('Error verifying OTP');
     }
   };
 
   return (
     <View style={{ padding: 20 }}>
-      {step === "mobile" ? (
+      {step === 'mobile' ? (
         <>
           <TextInput
             placeholder="Enter Mobile Number"
@@ -106,7 +112,7 @@ const LoginScreen = ({ setIsLoggedIn }: LoginProps) => {
         </>
       )}
 
-      <Text style={{ marginTop: 10, fontWeight: "bold" }}>{message}</Text>
+      <Text style={{ marginTop: 10, fontWeight: 'bold' }}>{message}</Text>
     </View>
   );
 };

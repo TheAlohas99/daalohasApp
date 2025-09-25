@@ -2,12 +2,12 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const baseUrl = 'https://dabackend-z7p2s.ondigitalocean.app';
+const baseUrl = 'https://api.daalohas.com';
 
 // small helper to check MongoId format
 const isMongoId = (v) => typeof v === 'string' && /^[a-f0-9]{24}$/i.test(v);
 
-// ✅ Only keep date-based API
+// Only keep date-based API
 export const fetchReservationsByDate = createAsyncThunk(
   'reservations/fetchReservationsByDate',
   async ({ start, end, propertyId = 'all' }, { rejectWithValue }) => {

@@ -1,7 +1,11 @@
-// ReservationsDashboardScreen.js
-// Dashboard from reservations API for a single selected date
-
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+// screens/ReservationsDashboardScreen.js
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import {
   View,
   Text,
@@ -11,11 +15,14 @@ import {
   ActivityIndicator,
   FlatList,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector, shallowEqual } from 'react-redux';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { fetchReservationsByDate /*, clearReservations*/ } from '../redux/slice/ReservationSlice';
 import { getProperty } from '../redux/slice/PropertySlice';
-import { fetchReservationsByDate } from '../redux/slice/ReservationSlice';
+
+/* -------------------- Utilities -------------------- */
 
 const displayString = v => {
   if (v == null) return '';
@@ -27,9 +34,6 @@ const displayString = v => {
   }
   return String(v);
 };
-
-const normalizeId = v =>
-  typeof v === 'string' ? v : displayString(v?._id ?? v?.id ?? v?.$oid ?? '');
 
 const toNumber = v => {
   if (v == null || v === '') return 0;
@@ -60,71 +64,157 @@ const addDays = (d, n) => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
-const isoDate = d => {
+
+/** Local YYYY-MM-DD (no UTC shift). */
+const ymdLocal = d => {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
-  return x.toISOString().slice(0, 10);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 };
 
-/** 👉 Days from TODAY to a given YYYY-MM-DD arrival date.
- *  returns negative if the date already passed, 0 if today, positive if upcoming.
- */
+/** Normalize any date-ish value to YYYY-MM-DD (local). */
+const toYmd = v => {
+  if (v == null || v === '') return '';
+  if (typeof v === 'string') {
+    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1]; // already YYYY-MM-DD or starts with it
+    const t = new Date(v);
+    return isNaN(t) ? '' : ymdLocal(t);
+  }
+  return ymdLocal(v);
+};
+
+/** Returns negative if date passed, 0 if today, positive if upcoming. */
 const daysUntilFromToday = yyyyMmDd => {
+  const [y, m, d] = (yyyyMmDd || '').split('-').map(Number);
+  if (!y || !m || !d) return 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const target = new Date(yyyyMmDd);
+  const target = new Date(y, m - 1, d);
   target.setHours(0, 0, 0, 0);
-  const diffMs = target - today;
-  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
 };
 
-export default function DashboardScreen() {
+/** Pick the amount once, reuse everywhere */
+const getAmount = r =>
+  toNumber(
+    r?.total_amount ??
+      r?.amount_total ??
+      r?.grand_total ??
+      r?.base_amount ??
+      r?.per_night_amount ??
+      r?.amount ??
+      0
+  );
+
+/* ------------- Property/ID helpers (NEW) ------------- */
+
+// Normalize any id-ish thing to a comparable string
+const normalizeId = v => {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number') return String(v);
+  if (typeof v === 'object') {
+    if (v._id) return normalizeId(v._id);
+    if (v.id) return normalizeId(v.id);
+    if (v.$oid) return String(v.$oid);
+  }
+  return String(v);
+};
+
+// Extract property id from a reservation (support many backends)
+const getResPropertyId = r =>
+  r?.property_id ??
+  r?.propertyId ??
+  r?.property?.id ??
+  r?.property?._id ??
+  r?.property?.$oid ??
+  r?.property ?? // sometimes it's just a string id
+  '';
+
+/* -------------------- Screen -------------------- */
+
+export default function ReservationsDashboardScreen() {
   const dispatch = useDispatch();
   const { width } = useWindowDimensions();
 
-  // slices
-  const { data: properties = [], loading: propertiesLoading } = useSelector(
-    s => s.property || {},
-  );
+  // Reservations slice
   const {
     reservations: reservationsArray = [],
     loading: reservationsLoading = false,
     error: reservationsError = null,
-  } = useSelector(s => s.reservation);
+  } = useSelector(s => s.reservation || {}, shallowEqual);
 
-  // state
-  const [selectedProperty, setSelectedProperty] = useState('all');
+  // Properties slice (allowed properties for logged-in user)
+  const { properties, propertiesLoading } = useSelector(
+    s => ({
+      properties: (s.property && s.property.data) || [],
+      propertiesLoading: (s.property && s.property.loading) || false,
+    }),
+    shallowEqual
+  );
+  console.log(reservationsArray)
+
+  // Load properties for logged-in user (email, mobile) once
+  useEffect(() => {
+    (async () => {
+      try {
+        const userJson = await AsyncStorage.getItem('user');
+        if (userJson) {
+          const user = JSON.parse(userJson);
+          const { email, mobile } = user || {};
+          const mobileNoPlus = (mobile || '').replace(/^\+/, '');
+          if (email || mobileNoPlus) {
+            dispatch(getProperty({ email, mobile: mobileNoPlus }));
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user from storage:', error);
+      }
+    })();
+  }, [dispatch]);
+
+  // Derived: allowed property id set
+  const allowedPropertyIds = useMemo(() => {
+    const arr = Array.isArray(properties) ? properties : [];
+    return new Set(arr.map(p => normalizeId(p?._id ?? p?.id ?? p)));
+  }, [properties]);
+
+  // Local state: selected day
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   });
+  const dateKey = ymdLocal(selectedDate);
 
-  // fetch properties once
-  useEffect(() => {
-    dispatch(getProperty());
-  }, [dispatch]);
+  // De-dupe fetches so we don't spam the API
+  const lastFetchRef = useRef({ start: null, end: null });
 
-  // fetch reservations for a 1-day window around selectedDate (inclusive)
+  // Fetch a 2-day window: [D-1, D+1) — ensures checkouts on D are included
   const refresh = useCallback(() => {
-    const start = isoDate(selectedDate);
-    const end = isoDate(selectedDate);
-    // Let the thunk decide whether to include propertyId (it filters out "all")
-    dispatch(
-      fetchReservationsByDate({ start, end, propertyId: selectedProperty }),
-    );
-  }, [dispatch, selectedDate, selectedProperty]);
+    const start = ymdLocal(addDays(selectedDate, -1));
+    const end = ymdLocal(addDays(selectedDate, 1)); // exclusive end
+
+    if (
+      lastFetchRef.current.start === start &&
+      lastFetchRef.current.end === end
+    ) {
+      return;
+    }
+    lastFetchRef.current = { start, end };
+
+    dispatch(fetchReservationsByDate({ start, end }));
+  }, [dispatch, selectedDate]);
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    // return () => dispatch(clearReservations());
+  }, [refresh, dispatch]);
 
-  const propertyList = useMemo(
-    () => (Array.isArray(properties) ? properties : []),
-    [properties],
-  );
-
-  // derive month title
+  // Month title
   const monthTitle = useMemo(() => {
     try {
       return selectedDate.toLocaleDateString(undefined, {
@@ -136,199 +226,117 @@ export default function DashboardScreen() {
     }
   }, [selectedDate]);
 
-  // Quick week strip (centered on selectedDate)
+  // Week strip (centered-ish around selectedDate)
   const weekDates = useMemo(() => {
     const arr = [];
     for (let i = -2; i <= 4; i++) arr.push(addDays(selectedDate, i));
     return arr;
   }, [selectedDate]);
 
-  // filter by selected property (or all)
-  const getPropId = p => normalizeId(p?._id ?? p?.propertyId ?? p?.id ?? p);
-  const selectedPropExists =
-    selectedProperty === 'all' ||
-    propertyList.some(p => getPropId(p) === selectedProperty);
+  /* ------------ FILTER: reservations by property ------------ */
 
-  useEffect(() => {
-    if (!selectedPropExists) setSelectedProperty('all');
-  }, [selectedPropExists]);
+  // Use only reservations whose property id is in allowedPropertyIds
+  const matchedReservations = useMemo(() => {
+    const list = Array.isArray(reservationsArray) ? reservationsArray : [];
+    if (!allowedPropertyIds || allowedPropertyIds.size === 0) {
+      // If nothing loaded yet, choose behavior:
+      // return []  // show none until properties load
+      return list;  // OR: show all; switch to [] if you prefer strict filtering
+    }
+    return list.filter(r => {
+      const pid = normalizeId(getResPropertyId(r));
+      return pid && allowedPropertyIds.has(pid);
+    });
+  }, [reservationsArray, allowedPropertyIds]);
 
-  // compute for the selected date
-  const dateKey = isoDate(selectedDate);
-
+  /* ------------ Day-based derived lists (using matchedReservations) ------------ */
+console.log(matchedReservations)
+  // Overlapping reservations for the day (ci <= D and co > D)
   const filteredReservations = useMemo(() => {
-    const list = Array.isArray(reservationsArray) ? reservationsArray : [];
-    const inProp =
-      selectedProperty === 'all'
-        ? () => true
-        : r => {
-            const pid = normalizeId(
-              r.propertyId?._id ??
-                r.property_id?._id ??
-                r.property?._id ??
-                r.propertyId ??
-                r.property_id ??
-                r.property,
-            );
-            return pid === selectedProperty;
-          };
-
+    const list = matchedReservations;
     return list.filter(r => {
-      const ci = displayString(
-        r.check_in_date || r.checkin_date || r.checkInDate || r.start_date,
-      );
-      const co = displayString(
-        r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date,
-      );
-      // half-open day occupancy: ci <= dateKey && co > dateKey
-      return inProp(r) && ci <= dateKey && co > dateKey;
+      const ci = toYmd(r.check_in_date || r.checkin_date || r.checkInDate || r.start_date);
+      const co = toYmd(r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date);
+      if (!ci || !co) return false;
+      return ci <= dateKey && co > dateKey;
     });
-  }, [reservationsArray, selectedProperty, dateKey]);
+  }, [matchedReservations, dateKey]);
 
-  // Arrivals = check_in_date === dateKey (respect property filter)
   const arrivals = useMemo(() => {
-    const list = Array.isArray(reservationsArray) ? reservationsArray : [];
-    return list.filter(r => {
-      const ci = displayString(
-        r.check_in_date || r.checkin_date || r.checkInDate || r.start_date,
-      );
-      if (ci !== dateKey) return false;
-      if (selectedProperty === 'all') return true;
-      const pid = normalizeId(
-        r.propertyId?._id ??
-          r.property_id?._id ??
-          r.property?._id ??
-          r.propertyId ??
-          r.property_id ??
-          r.property,
-      );
-      return pid === selectedProperty;
-    });
-  }, [reservationsArray, selectedProperty, dateKey]);
+    const list = matchedReservations;
+    return list.filter(
+      r =>
+        toYmd(r.check_in_date || r.checkin_date || r.checkInDate || r.start_date) ===
+        dateKey
+    );
+  }, [matchedReservations, dateKey]);
 
-  // Departures = check_out_date === dateKey
   const departures = useMemo(() => {
-    const list = Array.isArray(reservationsArray) ? reservationsArray : [];
-    return list.filter(r => {
-      const co = displayString(
-        r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date,
-      );
-      if (co !== dateKey) return false;
-      if (selectedProperty === 'all') return true;
-      const pid = normalizeId(
-        r.propertyId?._id ??
-          r.property_id?._id ??
-          r.property?._id ??
-          r.propertyId ??
-          r.property_id ??
-          r.property,
-      );
-      return pid === selectedProperty;
-    });
-  }, [reservationsArray, selectedProperty, dateKey]);
+    const list = matchedReservations;
+    return list.filter(
+      r =>
+        toYmd(r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date) ===
+        dateKey
+    );
+  }, [matchedReservations, dateKey]);
 
-  // Stay = filteredReservations (overnights on that date)
   const stay = filteredReservations;
 
-  // Totals by reservation_status for the selected date window (we’ll consider arrivals+stays+departures union)
-  const windowReservations = useMemo(() => {
-    const list = Array.isArray(reservationsArray) ? reservationsArray : [];
-    // Include any reservation overlapping selected date
+  // NEW today
+  const newTodayList = useMemo(() => {
+    const list = matchedReservations;
     return list.filter(r => {
-      const ci = displayString(
-        r.check_in_date || r.checkin_date || r.checkInDate || r.start_date,
-      );
-      const co = displayString(
-        r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date,
-      );
-      const overlaps = ci <= dateKey && co > dateKey;
-      if (!overlaps) return false;
-      if (selectedProperty === 'all') return true;
-      const pid = normalizeId(
-        r.propertyId?._id ??
-          r.property_id?._id ??
-          r.property?._id ??
-          r.propertyId ??
-          r.property_id ??
-          r.property,
-      );
-      return pid === selectedProperty;
+      const created = toYmd(r.createdAt || r.created_at || r.created_on);
+      return created === dateKey;
     });
-  }, [reservationsArray, selectedProperty, dateKey]);
+  }, [matchedReservations, dateKey]);
+  const newCount = newTodayList.length;
+  const newAmount = useMemo(
+    () => newTodayList.reduce((s, r) => s + getAmount(r), 0),
+    [newTodayList]
+  );
 
-  const sumByStatus = statusName => {
-    let total = 0;
-    windowReservations.forEach(r => {
-      const st = displayString(
-        r.reservation_status || r.status || '',
-      ).toUpperCase();
-      if (st === statusName) {
-        const amt =
-          r.total_amount ??
-          r.amount_total ??
-          r.grand_total ??
-          r.base_amount ??
-          r.per_night_amount;
-        total += toNumber(amt);
-      }
+  // MODIFIED today (not created today, not cancelled)
+  const modifiedTodayList = useMemo(() => {
+    const list = matchedReservations;
+    return list.filter(r => {
+      const status = displayString(r.reservation_status || r.status || '').toUpperCase();
+      if (status === 'CANCELLED') return false;
+      const created = toYmd(r.createdAt || r.created_at || r.created_on);
+      const updated = toYmd(r.updatedAt || r.updated_at || r.modifiedAt || r.modified_at);
+      return updated === dateKey && updated !== created;
     });
-    return total;
-  };
+  }, [matchedReservations, dateKey]);
+  const modifiedCount = modifiedTodayList.length;
+  const modifiedAmount = useMemo(
+    () => modifiedTodayList.reduce((s, r) => s + getAmount(r), 0),
+    [modifiedTodayList]
+  );
 
-  const totalNew = sumByStatus('NEW');
-  const totalModified = sumByStatus('MODIFIED');
-  const totalCancelled = sumByStatus('CANCELLED');
-
-  // Occupancy: booked properties / total properties (for the chosen scope)
-  const totalProps = useMemo(() => {
-    if (selectedProperty !== 'all') return 1;
-    return propertyList.filter(p => getPropId(p)).length || 0;
-  }, [propertyList, selectedProperty]);
-
-  const occupiedPropIds = useMemo(() => {
-    const ids = new Set();
-    stay.forEach(r => {
-      const pid = normalizeId(
-        r.propertyId?._id ??
-          r.property_id?._id ??
-          r.property?._id ??
-          r.propertyId ??
-          r.property_id ??
-          r.property,
-      );
-      if (pid) ids.add(pid);
+  // CANCELLED today
+  const cancelledTodayList = useMemo(() => {
+    const list = matchedReservations;
+    return list.filter(r => {
+      const status = displayString(r.reservation_status || r.status || '').toUpperCase();
+      if (status !== 'CANCELLED') return false;
+      const cancelDate =
+        toYmd(r.cancelledAt || r.cancelled_at || r.cancellation_date || r.cancel_date) ||
+        toYmd(r.updatedAt || r.updated_at);
+      return cancelDate === dateKey;
     });
-    if (selectedProperty !== 'all')
-      return new Set(stay.length ? [selectedProperty] : []);
-    return ids;
-  }, [stay, selectedProperty]);
+  }, [matchedReservations, dateKey]);
+  const cancelledCount = cancelledTodayList.length;
+  const cancelledAmount = useMemo(
+    () => cancelledTodayList.reduce((s, r) => s + getAmount(r), 0),
+    [cancelledTodayList]
+  );
 
-  const occupancyPct = totalProps
-    ? Math.round((occupiedPropIds.size / totalProps) * 100)
-    : 0;
+  const overallLoading = reservationsLoading;
 
-  const overallLoading = propertiesLoading || reservationsLoading;
+  /* -------------------- UI -------------------- */
 
-  // UI
   return (
     <View style={styles.container}>
-      {/* Top property picker (uncomment if you want the dropdown) */}
-      {/* <View style={styles.topBar}>
-        <Picker
-          selectedValue={selectedProperty}
-          onValueChange={val => setSelectedProperty(val)}
-          mode="dropdown"
-          style={styles.picker}
-        >
-          <Picker.Item label="All Properties" value="all" />
-          {propertyList.map(p => {
-            const id = getPropId(p);
-            const title = displayString(p.title ?? p.name ?? p.internal_name ?? p.property_title ?? id);
-            return <Picker.Item key={id || title} label={title} value={id} />;
-          })}
-        </Picker>
-      </View> */}
-
       {/* Month header */}
       <View style={styles.monthHeader}>
         <TouchableOpacity
@@ -346,7 +354,16 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Date row (like screenshot) */}
+      {/* Optional: show current property filter */}
+      {/* {allowedPropertyIds.size > 0 && (
+        <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+          <Text style={{ color: '#6b7a87', fontWeight: '700' }}>
+            Filtering {allowedPropertyIds.size} propert{allowedPropertyIds.size === 1 ? 'y' : 'ies'}
+          </Text>
+        </View>
+      )} */}
+
+      {/* Date row */}
       <View style={styles.dateStripWrap}>
         <FlatList
           horizontal
@@ -355,16 +372,14 @@ export default function DashboardScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.dateStripContent}
           renderItem={({ item }) => {
-            const isSelected = isoDate(item) === dateKey;
+            const isSelected = ymdLocal(item) === dateKey;
             return (
               <TouchableOpacity
                 style={[styles.dayPill, isSelected && styles.dayPillSelected]}
                 onPress={() => setSelectedDate(item)}
                 activeOpacity={0.85}
               >
-                <Text
-                  style={[styles.dayText, isSelected && styles.dayTextSelected]}
-                >
+                <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
                   {item.getDate()}
                 </Text>
               </TouchableOpacity>
@@ -373,27 +388,25 @@ export default function DashboardScreen() {
         />
       </View>
 
-      {/* Loading / Error */}
+      {/* Loading / Error / Content */}
       {overallLoading ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="#0b486b" />
         </View>
       ) : reservationsError ? (
         <View style={styles.errorBox}>
-          <Text style={styles.errorText}>
-            {displayString(reservationsError)}
-          </Text>
+          <Text style={styles.errorText}>{displayString(reservationsError)}</Text>
         </View>
       ) : (
         <>
-          {/* Big counters row */}
+          {/* Big counters */}
           <View style={styles.countersRow}>
             <Counter title="ARRIVALS" value={arrivals.length} />
             <Counter title="DEPARTURES" value={departures.length} />
             <Counter title="STAY" value={stay.length} highlight />
           </View>
 
-          {/* Example: days until the selected date from today (remove if not needed) */}
+          {/* Days until chip */}
           <View style={styles.untilWrap}>
             <Text style={styles.untilText}>
               {(() => {
@@ -407,32 +420,20 @@ export default function DashboardScreen() {
 
           {/* Rows with amounts */}
           <View style={styles.listRow}>
-            <RowItem
-              label="NEW"
-              count={countStatus(windowReservations, 'NEW')}
-              amount={totalNew}
-            />
-            <RowItem
-              label="MODIFIED"
-              count={countStatus(windowReservations, 'MODIFIED')}
-              amount={totalModified}
-            />
-            <RowItem
-              label="CANCELLED"
-              count={countStatus(windowReservations, 'CANCELLED')}
-              amount={totalCancelled}
-            />
+            <RowItem label="NEW" count={newCount} amount={newAmount} />
+            {/* <RowItem label="MODIFIED" count={modifiedCount} amount={modifiedAmount} /> */}
+            <RowItem label="CANCELLED" count={cancelledCount} amount={cancelledAmount} />
           </View>
 
-          {/* Occupancy card */}
+          {/* Bookings ring (overlapping reservations count) */}
           <View style={styles.occCard}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.occTitle}>CRUSHING IT!</Text>
-              <Text style={styles.occSub}>Your occupancy is</Text>
+              <Text style={styles.occTitle}>TOTAL BOOKINGS</Text>
+              <Text style={styles.occSub}>for the selected day</Text>
             </View>
             <View style={styles.ringWrap}>
               <View style={styles.ring}>
-                <Text style={styles.ringPct}>{occupancyPct}%</Text>
+                <Text style={styles.ringPct}>{stay.length}</Text>
               </View>
             </View>
           </View>
@@ -442,7 +443,7 @@ export default function DashboardScreen() {
   );
 }
 
-/* ---------- Small components ---------- */
+/* -------------------- Small components -------------------- */
 
 function Counter({ title, value, highlight }) {
   return (
@@ -482,23 +483,10 @@ function RowItem({ label, count, amount }) {
   );
 }
 
-function countStatus(list, statusName) {
-  const s = String(statusName || '').toUpperCase();
-  return list.reduce((acc, r) => {
-    const st = (r?.reservation_status || r?.status || '')
-      .toString()
-      .toUpperCase();
-    return acc + (st === s ? 1 : 0);
-  }, 0);
-}
-
-/* ---------- Styles ---------- */
+/* -------------------- Styles -------------------- */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-
-  topBar: { paddingHorizontal: 12, paddingTop: 6, paddingBottom: 2 },
-  picker: { color: '#17364a' },
 
   monthHeader: {
     height: 56,
@@ -510,16 +498,13 @@ const styles = StyleSheet.create({
   monthTitle: { fontSize: 20, fontWeight: '800', color: '#17364a' },
   navBtn: { padding: 6 },
 
-  // ✅ Fix: constrain the date strip's height so FlatList doesn't eat vertical space
-  dateStrip: { height: 60 }, // adjust to your pill size
-  dateStripContent: { paddingHorizontal: 12, alignItems: 'center' },
-
+  // date strip
   dateStripWrap: {
-    height: 60, // 👈 matches pill size, prevents extra blank space
-    justifyContent: 'center', // vertically center pills
+    height: 60,
+    justifyContent: 'center',
   },
   dateStripContent: {
-    alignItems: 'center', // keep pills aligned
+    alignItems: 'center',
     paddingHorizontal: 12,
   },
   dayPill: {
@@ -548,7 +533,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
 
-  // optional "days until" chip
   untilWrap: { alignItems: 'center', paddingTop: 6, paddingBottom: 4 },
   untilText: { color: '#6b7a87', fontWeight: '700' },
 
