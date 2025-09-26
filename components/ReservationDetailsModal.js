@@ -1,5 +1,5 @@
 // src/components/ReservationDetailsModal.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -11,15 +11,18 @@ import {
   Text,
   ActivityIndicator,
   Alert,
+  BackHandler,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import SText from '../components/SText';
 import { displayString } from '../utils/display';
 import { addDays } from '../utils/date';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ReservationNotes from '../components/Reservation/ReservationNotes';
 
 const baseUrl = 'https://api.daalohas.com';
 
@@ -113,7 +116,7 @@ const pick = {
   checkOut: r =>
     r?.check_out_date || r?.checkout_date || r?.checkOutDate || r?.end_date,
 
-  /* UPDATED: robust guests calculation */
+  /* robust guests calculation */
   guests: r => {
     const direct = toInt(
       r?.guests_count ?? r?.no_of_guests ?? r?.num_guests ?? r?.total_guests,
@@ -213,9 +216,21 @@ export default function ReservationDetailsModal({
       ? open
       : false;
 
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+
   const [idx, setIdx] = useState(0);
   useEffect(() => setIdx(0), [reservations?.length]);
-  const navigation = useNavigation();
+
+  // Android hardware back -> close when open
+  useEffect(() => {
+    if (!isOpen) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isOpen]);
 
   const r = (Array.isArray(reservations) ? reservations : [])[idx] || {};
 
@@ -228,12 +243,12 @@ export default function ReservationDetailsModal({
   const leftToPay =
     total != null ? Math.max(0, total - (num(pick.paid(r)) ?? 0)) : null;
 
-  const close = () => {
+  const handleClose = () => {
     if (typeof onClose === 'function') onClose();
     if (typeof onRequestClose === 'function') onRequestClose();
   };
 
-  // ---------- Check-Out API wiring (axios + token + withCredentials) ----------
+  // ---------- Check-Out API wiring ----------
   const [checkingOut, setCheckingOut] = useState(false);
   const reservationId = displayString(pick.reference(r));
   const CHECKOUT_URL = `${baseUrl}/api/v1/checkout`;
@@ -258,7 +273,8 @@ export default function ReservationDetailsModal({
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+          withCredentials: true,
+        },
       );
 
       if (!data?.success) {
@@ -269,8 +285,8 @@ export default function ReservationDetailsModal({
       if (typeof onCheckoutSuccess === 'function') {
         onCheckoutSuccess(data.data);
       }
-      // Optionally close the modal:
-      // close();
+      // Optionally close after success
+      // handleClose();
     } catch (e) {
       const msg =
         e?.response?.data?.message ||
@@ -293,67 +309,92 @@ export default function ReservationDetailsModal({
     );
   };
 
+  // header shadow on scroll
+  const [scrolled, setScrolled] = useState(false);
+  const onScroll = e => {
+    const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+    setScrolled(y > 2);
+  };
+
   return (
     <Modal
       visible={isOpen}
       transparent
       animationType="slide"
-      onRequestClose={close}
+      onRequestClose={handleClose}
       statusBarTranslucent
     >
       {/* Backdrop */}
-      <Pressable style={s.backdrop} onPress={close}>
-        {/* Sheet */}
+      <Pressable style={s.backdrop} onPress={handleClose}>
+        {/* Sheet (presses inside should NOT close) */}
         <Pressable
           onPress={() => {}}
-          style={[s.sheet, { paddingBottom: Platform.OS === 'ios' ? 24 : 12 }]}
+          style={[
+            s.sheet,
+            { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 12 },
+          ]}
         >
-          {/* Header */}
-          <View style={s.header}>
-            <TouchableOpacity onPress={close} style={s.headerBtn}>
-              <Icon name="arrow-left" size={22} color="#0b486b" />
-            </TouchableOpacity>
+          {/* Fixed Header */}
+          <View
+            style={[
+              s.headerWrap,
+              {
+                paddingTop: Math.max(insets.top * 0.35, 4),
+                shadowOpacity: scrolled ? 0.08 : 0,
+                elevation: scrolled ? 3 : 0,
+              },
+            ]}
+          >
+            <View style={s.header}>
+              <TouchableOpacity onPress={handleClose} style={s.headerBtn}>
+                <Icon name="arrow-left" size={22} color="#0b486b" />
+              </TouchableOpacity>
 
-            <View style={{ flex: 1 }}>
-              {!!pick.subtitle(r) && (
-                <SText style={s.headerSub} numberOfLines={1}>
-                  {displayString(pick.subtitle(r))}
+              <View style={{ flex: 1 }}>
+                {!!pick.subtitle(r) && (
+                  <SText style={s.headerSub} numberOfLines={1}>
+                    {displayString(pick.subtitle(r))}
+                  </SText>
+                )}
+                <SText style={s.headerTitle} numberOfLines={2}>
+                  {displayString(pick.title(r) || 'Reservation')}
                 </SText>
-              )}
-              <SText style={s.headerTitle} numberOfLines={2}>
-                {displayString(pick.title(r) || 'Reservation')}
-              </SText>
-            </View>
-
-            {/* Pager */}
-            {reservations.length > 1 ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity
-                  onPress={() =>
-                    setIdx(
-                      p => (p - 1 + reservations.length) % reservations.length,
-                    )
-                  }
-                  style={{ padding: 6 }}
-                >
-                  <Icon name="chevron-left" size={22} color="#17364a" />
-                </TouchableOpacity>
-                <SText style={{ fontWeight: '800', color: '#17364a' }}>
-                  {idx + 1}/{reservations.length}
-                </SText>
-                <TouchableOpacity
-                  onPress={() => setIdx(p => (p + 1) % reservations.length)}
-                  style={{ padding: 6 }}
-                >
-                  <Icon name="chevron-right" size={22} color="#17364a" />
-                </TouchableOpacity>
               </View>
-            ) : (
-              <View style={{ width: 44 }} />
-            )}
+
+              {reservations.length > 1 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setIdx(p => (p - 1 + reservations.length) % reservations.length)
+                    }
+                    style={{ padding: 6 }}
+                  >
+                    <Icon name="chevron-left" size={22} color="#17364a" />
+                  </TouchableOpacity>
+                  <SText style={{ fontWeight: '800', color: '#17364a' }}>
+                    {idx + 1}/{reservations.length}
+                  </SText>
+                  <TouchableOpacity
+                    onPress={() => setIdx(p => (p + 1) % reservations.length)}
+                    style={{ padding: 6 }}
+                  >
+                    <Icon name="chevron-right" size={22} color="#17364a" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ width: 44 }} />
+              )}
+            </View>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+          {/* Scrollable content */}
+          <ScrollView
+            style={s.scroll}
+            contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Nights & guests */}
             <View style={s.kpiRow}>
               <View style={s.kpiItem}>
@@ -365,7 +406,7 @@ export default function ReservationDetailsModal({
               <View style={s.kpiItem}>
                 <Icon name="account" size={18} color="#0b486b" />
                 <SText style={s.kpiText}>
-                  {pick.guests(r)} person{pick.guests(r) === 1 ? '' :'s'}
+                  {pick.guests(r)} person{pick.guests(r) === 1 ? '' : 's'}
                 </SText>
               </View>
             </View>
@@ -375,12 +416,7 @@ export default function ReservationDetailsModal({
               <View style={s.checkCol}>
                 <View style={s.inlineRow}>
                   <SText style={s.checkLabel}>CHECKED IN</SText>
-                  <Icon
-                    name="check"
-                    size={14}
-                    color="#cde9fb"
-                    style={{ marginLeft: 6 }}
-                  />
+                  <Icon name="check" size={14} color="#cde9fb" style={{ marginLeft: 6 }} />
                 </View>
                 <SText style={s.checkDate}>{fmtDate(ci)}</SText>
               </View>
@@ -392,12 +428,7 @@ export default function ReservationDetailsModal({
               <View style={s.checkCol}>
                 <View style={s.inlineRow}>
                   <SText style={s.checkLabel}>CHECKED OUT</SText>
-                  <Icon
-                    name="check"
-                    size={14}
-                    color="#cde9fb"
-                    style={{ marginLeft: 6 }}
-                  />
+                  <Icon name="check" size={14} color="#cde9fb" style={{ marginLeft: 6 }} />
                 </View>
                 <SText style={s.checkDate}>{fmtDate(co)}</SText>
               </View>
@@ -407,9 +438,7 @@ export default function ReservationDetailsModal({
             <View style={s.moneyRow}>
               <View style={s.moneyCol}>
                 <View style={s.inlineRow}>
-                  <SText style={s.moneyBigGreen}>
-                    {money(total, currency)}
-                  </SText>
+                  <SText style={s.moneyBigGreen}>{money(total, currency)}</SText>
                   <Icon
                     name="check-decagram-outline"
                     size={16}
@@ -432,9 +461,7 @@ export default function ReservationDetailsModal({
                 <SText style={s.sectionTitle}>Source</SText>
                 <SText style={s.sectionValue}>
                   {displayString(pick.channel(r)) || '—'}
-                  {pick.createdAt(r)
-                    ? `  •  ${fmtTime(pick.createdAt(r))}`
-                    : ''}
+                  {pick.createdAt(r) ? `  •  ${fmtTime(pick.createdAt(r))}` : ''}
                 </SText>
               </View>
             )}
@@ -445,16 +472,11 @@ export default function ReservationDetailsModal({
               <View style={s.bookerRow}>
                 <View style={s.avatar}>
                   <SText style={s.avatarLetters}>
-                    {String(pick.bookerName(r) || 'G')
-                      .trim()
-                      .slice(0, 1)
-                      .toUpperCase()}
+                    {String(pick.bookerName(r) || 'G').trim().slice(0, 1).toUpperCase()}
                   </SText>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <SText style={s.bookerName}>
-                    {displayString(pick.bookerName(r))}
-                  </SText>
+                  <SText style={s.bookerName}>{displayString(pick.bookerName(r))}</SText>
 
                   {leftToPay != null && (
                     <View style={s.badgeRow}>
@@ -471,49 +493,44 @@ export default function ReservationDetailsModal({
               {pick.phone(r) ? (
                 <View style={s.row}>
                   <SText style={s.rowLabel}>Phone</SText>
-                  <SText style={s.rowValue}>
-                    {displayString(pick.phone(r))}
-                  </SText>
+                  <SText style={s.rowValue}>{displayString(pick.phone(r))}</SText>
                 </View>
               ) : null}
 
               {pick.email(r) ? (
                 <View style={s.row}>
                   <SText style={s.rowLabel}>Email</SText>
-                  <SText style={s.rowValue}>
-                    {displayString(pick.email(r))}
-                  </SText>
+                  <SText style={s.rowValue}>{displayString(pick.email(r))}</SText>
                 </View>
               ) : null}
 
               {pick.reference(r) ? (
                 <View style={s.row}>
                   <SText style={s.rowLabel}>Reference</SText>
-                  <SText style={s.rowValue}>
-                    {displayString(pick.reference(r))}
-                  </SText>
+                  <SText style={s.rowValue}>{displayString(pick.reference(r))}</SText>
                 </View>
               ) : null}
 
               {pick.status(r) ? (
                 <View style={s.row}>
                   <SText style={s.rowLabel}>Status</SText>
-                  <SText style={s.rowValue}>
-                    {displayString(pick.status(r))}
-                  </SText>
+                  <SText style={s.rowValue}>{displayString(pick.status(r))}</SText>
                 </View>
               ) : null}
             </View>
 
-            {/* Better Action Buttons */}
+            {/* Notes */}
+            <ReservationNotes
+              reservationId={reservationId}
+              initialNotes={typeof r?.notes === 'string' ? r.notes : ''}
+              onSaved={() => Alert.alert('Saved', 'Notes updated successfully.')}
+            />
+
+            {/* Actions */}
             <View style={s.actionRow}>
               <Pressable
                 android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
-                style={({ pressed }) => [
-                  s.actionBtn,
-                  s.checkInBtn,
-                  pressed && s.actionBtnPressed,
-                ]}
+                style={({ pressed }) => [s.actionBtn, s.checkInBtn, pressed && s.actionBtnPressed]}
                 onPress={() =>
                   navigation.navigate('GuestScreen', {
                     reservationId: pick.reference(r),
@@ -542,11 +559,7 @@ export default function ReservationDetailsModal({
                 disabled={checkingOut}
               >
                 <View style={[s.actionIcon, { backgroundColor: 'rgba(255,255,255,0.22)' }]}>
-                  {checkingOut ? (
-                    <ActivityIndicator size="small" />
-                  ) : (
-                    <Icon name="logout-variant" size={18} color="#fff" />
-                  )}
+                  {checkingOut ? <ActivityIndicator size="small" /> : <Icon name="logout-variant" size={18} color="#fff" />}
                 </View>
                 <View style={s.actionTextWrap}>
                   <Text style={s.actionTitle}>Check-Out</Text>
@@ -557,9 +570,7 @@ export default function ReservationDetailsModal({
             {/* Other reservations */}
             {reservations.length > 1 && (
               <View style={{ marginTop: 12 }}>
-                <SText style={s.sectionTitle}>
-                  Other reservations this night
-                </SText>
+                <SText style={s.sectionTitle}>Other reservations this night</SText>
                 {reservations.map((rr, i) => {
                   if (i === idx) return null;
                   const n = diffNights(pick.checkIn(rr), pick.checkOut(rr));
@@ -567,9 +578,7 @@ export default function ReservationDetailsModal({
                     <View key={`other-${i}`} style={s.smallCard}>
                       <SText style={s.otherTitle}>
                         {displayString(pick.bookerName(rr))}
-                        {pick.reference(rr)
-                          ? ` • ${displayString(pick.reference(rr))}`
-                          : ''}
+                        {pick.reference(rr) ? ` • ${displayString(pick.reference(rr))}` : ''}
                       </SText>
                       <SText style={s.otherSub}>
                         {fmtDate(pick.checkIn(rr))} → {fmtDate(pick.checkOut(rr))} • {n} night
@@ -598,15 +607,32 @@ const s = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#fff',
-    height: '90%',
+    height: '98%',
     alignSelf: 'stretch',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingHorizontal: 14,
-    paddingTop: 15,
+    paddingTop: 0, // we add top padding inside header
   },
 
-  header: { flexDirection: 'row', alignItems: 'center', paddingBottom: 8 },
+  // Fixed header container with subtle bottom border & dynamic shadow
+  headerWrap: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 0,
+    paddingBottom: 6,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    shadowColor: '#000',
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
   headerBtn: { padding: 8, marginRight: 4 },
   headerSub: { color: '#6a7b88', fontWeight: '700', marginLeft: 4 },
   headerTitle: {
@@ -616,15 +642,20 @@ const s = StyleSheet.create({
     lineHeight: 28,
   },
 
+  // Scroll area (content only)
+  scroll: {
+    flex: 1,
+  },
+
   kpiRow: {
     flexDirection: 'row',
     columnGap: 16,
-    marginTop: 4,
+    marginTop: 8,
     marginBottom: 12,
     justifyContent: 'center',
   },
   kpiItem: { flexDirection: 'row', alignItems: 'center' },
-  kpiText: { color: '#1a2e3b', fontWeight: '800' },
+  kpiText: { color: '#1a2e3b', fontWeight: '800', marginLeft: 6 },
 
   checkPanel: {
     flexDirection: 'row',
@@ -644,14 +675,14 @@ const s = StyleSheet.create({
   checkLabel: { color: '#cde9fb', fontWeight: '800', marginBottom: 2 },
   checkDate: { color: '#fff', fontWeight: '900', fontSize: 18 },
 
-  moneyRow: { flexDirection: 'row', marginTop: 14, columnGap: 16 },
+  moneyRow: { flexDirection: 'row', marginTop: 2, columnGap: 16 },
   moneyCol: { flex: 1, paddingVertical: 8 },
   moneyBigGreen: { color: '#19a464', fontWeight: '900', fontSize: 20 },
   moneyBig: { color: '#0b486b', fontWeight: '900', fontSize: 20 },
   moneyCaption: { color: '#6a7b88', marginTop: 2, fontWeight: '700' },
 
   section: {
-    marginTop: 14,
+    marginTop: 2,
     padding: 12,
     backgroundColor: '#f6fbff',
     borderRadius: 10,
@@ -662,15 +693,15 @@ const s = StyleSheet.create({
   sectionValue: { color: '#17364a', fontWeight: '700' },
 
   card: {
-    marginTop: 14,
+    marginTop: 5,
     borderWidth: 1,
     borderColor: '#e7eef3',
     borderRadius: 12,
     padding: 12,
     backgroundColor: '#fafcfe',
   },
-  cardHeader: { color: '#6a7b88', fontWeight: '800', marginBottom: 8 },
-  bookerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  cardHeader: { color: '#6a7b88', fontWeight: '800', marginBottom: 2 },
+  bookerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
   avatar: {
     width: 36,
     height: 36,
@@ -717,9 +748,9 @@ const s = StyleSheet.create({
   otherSub: { color: '#5a6a77', fontWeight: '700', marginTop: 2 },
   otherMoney: { color: '#0b486b', fontWeight: '900', marginTop: 4 },
 
-  /* ---------- New button styles ---------- */
+  /* Buttons */
   actionRow: {
-    marginTop: 14,
+    marginTop: 3,
     flexDirection: 'row',
     columnGap: 12,
   },
@@ -742,6 +773,7 @@ const s = StyleSheet.create({
   },
   checkInBtn: { backgroundColor: '#19a464' },
   checkOutBtn: { backgroundColor: '#e74c3c' },
+  notesBtn: { backgroundColor: '#0b486b' },
   actionIcon: {
     width: 25,
     height: 25,
