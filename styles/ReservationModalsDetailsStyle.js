@@ -39,18 +39,18 @@ export const s = StyleSheet.create({
 
   // Check panel
   checkPanel: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#0b86d0', borderRadius: 12, overflow: 'hidden' },
-  checkCol: { flex: 1, padding: 12 },
+  checkCol: { flex: 1, paddingLeft:12, paddingRight:12, paddingBottom:5, paddingTop:5 },
   checkDivider: { width: 1, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center' },
   inlineRow: { flexDirection: 'row', alignItems: 'center' },
   checkLabel: { color: '#cde9fb', fontWeight: '800', marginBottom: 2 },
   checkDate: { color: '#fff', fontWeight: '900', fontSize: 18 },
 
   // Money
-  moneyRow: { flexDirection: 'row', marginTop: 2, columnGap: 16 },
+  moneyRow: { flexDirection: 'row', marginTop: 1, columnGap: 16 },
   moneyCol: { flex: 1, paddingVertical: 8 },
-  moneyBigGreen: { color: '#19a464', fontWeight: '900', fontSize: 20 },
-  moneyBig: { color: '#0b486b', fontWeight: '900', fontSize: 20 },
-  moneyCaption: { color: '#6a7b88', marginTop: 2, fontWeight: '700' },
+  moneyBigGreen: { color: '#19a464', fontWeight: '900', fontSize: 17 },
+  moneyBig: { color: '#0b486b', fontWeight: '900', fontSize: 17 },
+  moneyCaption: { color: '#6a7b88', marginTop: 1, fontWeight: '700' },
 
   // Section
   section: { marginTop: 2,  paddingLeft:12, paddingRight:12, paddingBottom:5, paddingTop:5, backgroundColor: '#f6fbff', borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: '#e7eef3' },
@@ -81,7 +81,7 @@ export const s = StyleSheet.create({
   // Actions
   actionRow: { marginTop: 3, flexDirection: 'row', columnGap: 12 },
   actionBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 14, borderRadius: 14,
+    flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 14,
     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3,
   },
   actionBtnPressed: { transform: [{ scale: 0.98 }], opacity: 0.95 },

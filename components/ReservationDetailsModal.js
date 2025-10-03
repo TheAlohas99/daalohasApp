@@ -275,16 +275,18 @@ export default function ReservationDetailsModal({
                   reservation: r,
                 })
               }
-              style={{
-                backgroundColor: '#25D366',
+              disabled={!pick.phone(r)}
+              style={({ pressed }) => ({
+                backgroundColor: pick.phone(r) ? '#25D366' : '#a5d6a7',
                 padding: 12,
                 borderRadius: 8,
                 alignItems: 'center',
                 marginTop: 12,
-              }}
+                opacity: pressed || !pick.phone(r) ? 0.7 : 1,
+              })}
             >
               <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-                Send via WhatsApp
+                WhatsApp
               </Text>
             </Pressable>
 

@@ -137,7 +137,7 @@ export default function ReservationNotes({
 }
 
 const s = StyleSheet.create({
-  wrap: { marginTop: 12 },
+  wrap: { marginTop: 5 },
   inputWrap: { position: 'relative' },
   input: {
     minHeight: 80,
