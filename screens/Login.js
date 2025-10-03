@@ -125,6 +125,14 @@ const LoginScreen = ({ setIsLoggedIn }) => {
   const otpRef = useRef(null);
   const boxes = Array.from({ length: 6 });
 
+  // Ensure keyboard shows when switching to OTP step
+  useEffect(() => {
+    if (step === 'otp') {
+      const t = setTimeout(() => otpRef.current?.focus(), 120);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -159,6 +167,7 @@ const LoginScreen = ({ setIsLoggedIn }) => {
                 maxLength={14}
                 autoComplete="tel"
                 textContentType="telephoneNumber"
+                importantForAutofill="yes"
                 placeholderTextColor={BRAND.muted}
               />
             </View>
@@ -197,7 +206,7 @@ const LoginScreen = ({ setIsLoggedIn }) => {
               <Text style={styles.backText}>Change number</Text>
             </TouchableOpacity>
 
-            {/* OTP boxes */}
+            {/* OTP boxes + invisible overlay input */}
             <TouchableOpacity
               activeOpacity={1}
               onPress={() => otpRef.current?.focus()}
@@ -221,16 +230,24 @@ const LoginScreen = ({ setIsLoggedIn }) => {
                   </View>
                 );
               })}
-              {/* Invisible text input drives the OTP */}
+
+              {/* Invisible, full-width input to reliably open keyboard */}
               <TextInput
                 ref={otpRef}
                 style={styles.hiddenOtpInput}
-                keyboardType="numeric"
+                keyboardType={Platform.select({ ios: 'number-pad', android: 'numeric' })}
                 value={otp}
                 onChangeText={(t) => setOtp(t.replace(/[^\d]/g, '').slice(0, 6))}
                 autoFocus
-                autoComplete="one-time-code"
+                showSoftInputOnFocus={true}
                 textContentType="oneTimeCode"
+                autoComplete={Platform.select({
+                  android: 'sms-otp',
+                  ios: 'one-time-code',
+                  default: 'one-time-code',
+                })}
+                importantForAutofill="yes"
+                secureTextEntry={false}
                 maxLength={6}
               />
             </TouchableOpacity>
@@ -305,12 +322,12 @@ const LoginScreen = ({ setIsLoggedIn }) => {
         )}
       </View>
 
-      <View style={styles.footer}>
+      {/* <View style={styles.footer}>
         <Icon name="shield-lock-outline" size={16} color={BRAND.muted} />
         <Text style={styles.footerText}>
           Protected by OTP • By continuing you agree to our Terms
         </Text>
-      </View>
+      </View> */}
     </KeyboardAvoidingView>
   );
 };
@@ -378,7 +395,13 @@ const styles = StyleSheet.create({
   backRow: { marginTop: 14, flexDirection: 'row', alignItems: 'center', gap: 4 },
   backText: { color: BRAND.primary, fontSize: 14, fontWeight: '600' },
 
-  otpRow: { marginTop: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  otpRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    position: 'relative', // allow absolute overlay
+  },
   otpBox: {
     width: 46,
     height: 56,
@@ -392,7 +415,15 @@ const styles = StyleSheet.create({
   otpBoxFocused: { borderColor: BRAND.accent, shadowColor: BRAND.accent, shadowOpacity: 0.12, shadowRadius: 8 },
   otpBoxFilled: { borderColor: '#d8e7ef' },
   otpChar: { fontSize: 20, fontWeight: '700', color: BRAND.text },
-  hiddenOtpInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
+
+  // Invisible full-width input overlay so taps open keyboard on all devices
+  hiddenOtpInput: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 56,     // match otp box height
+    opacity: 0.01,  // nearly invisible but still interactive
+  },
 
   resendRow: { marginTop: 14, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   resendText: { color: BRAND.muted },
@@ -412,6 +443,6 @@ const styles = StyleSheet.create({
   },
   msgText: { color: BRAND.primary, fontSize: 13, flexShrink: 1 },
 
-  footer: { marginTop: 16, alignItems: 'center', gap: 6 },
-  footerText: { fontSize: 12, color: BRAND.muted },
+  // footer: { marginTop: 16, alignItems: 'center', gap: 6 },
+  // footerText: { fontSize: 12, color: BRAND.muted },
 });

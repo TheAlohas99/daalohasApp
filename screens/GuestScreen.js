@@ -27,9 +27,9 @@ export default function GuestScreen({ route }) {
   return (
     <View style={{ flex: 1 }}>
       <WebView source={{ uri: url }} style={{ flex: 1 }} />
-      <TouchableOpacity style={styles.button} onPress={copyToClipboard}>
+      {/* <TouchableOpacity style={styles.button} onPress={copyToClipboard}>
         <Text style={styles.buttonText}>Copy Link</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
     </View>
   );
 }

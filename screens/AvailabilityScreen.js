@@ -1,4 +1,4 @@
-// AvailabilityScreen — composed from split components (multi-picker)
+// AvailabilityScreen — with half-day check-in/out visuals
 import React, {
   useCallback,
   useEffect,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 
 import styles from '../styles/availabilityStyles';
 import SText from '../components/SText';
@@ -43,8 +44,35 @@ import { addDays, clampDate, isoOf } from '../utils/date';
 import useDebounced from '../hooks/useDebounced';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/* ------------ Channel → Color helpers ------------- */
+const getChannelName = r =>
+  String(
+    r?.channel_name ??
+    r?.channel ??
+    r?.source ??
+    r?.portal ??
+    r?.origin ??
+    ''
+  )
+  .trim()
+  .toLowerCase();
+
+const getChannelColor = (name) => {
+  const n = String(name || '').toLowerCase();
+  if (n.includes('airbnb')) return '#FF5A5F';            // airbnb red
+  if (n.includes('alohas')) return '#7EC8FF';            // alohasPortal light blue
+  if (n.includes('make') || n.includes('makemytrip')) return '#2ECC71'; // makemytrip green
+  if (n.includes('direct')) return '#FF8A80';            // direct light red
+  if (n.includes('agoda')) return '#FFA500';             // agoda orange
+  if (n.includes('booking')) return '#003580';           // booking dark blue
+  if (n) return '#9B59B6';                               // other -> purple
+  return '#9B59B6';                                      // fallback purple
+};
+
 export default function AvailabilityScreen() {
   const dispatch = useDispatch();
+  const navigation = useNavigation();
+  const route = useRoute();
 
   const { properties, propertiesLoading } = useSelector(
     s => ({
@@ -53,8 +81,6 @@ export default function AvailabilityScreen() {
     }),
     shallowEqual,
   );
-
-  console.log(properties);
 
   const { reservationsArray, reservationsLoading, reservationsError } =
     useSelector(
@@ -104,9 +130,6 @@ export default function AvailabilityScreen() {
   const windowEndISO = useMemo(() => isoOf(windowEnd), [windowEnd]);
 
   // fetch boot
-  // useEffect(() => {
-  //     dispatch(getProperty({ email:"ankush@thealohas.com", mobile:"917282088791" }));
-  // }, [dispatch]);
   useEffect(() => {
     (async () => {
       try {
@@ -114,7 +137,7 @@ export default function AvailabilityScreen() {
         if (userJson) {
           const user = JSON.parse(userJson);
           const { email, mobile } = user;
-          dispatch(getProperty({ email, mobile: mobile.replace(/^\+/, '') }));
+          dispatch(getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }));
         }
       } catch (error) {
         console.error('Error loading user from storage:', error);
@@ -161,9 +184,12 @@ export default function AvailabilityScreen() {
     return propertyList.filter(p => set.has(getId(p)));
   }, [propertyList, selectedPropertyIds, getId]);
 
-  // pre-index reservations
-  const { byPropDate, spansByProp } = useMemo(() => {
-    const byPropDate_ = Object.create(null);
+  // -----------------------------------------------------------
+  // PRE-INDEX: occupied nights + explicit checkout day
+  // -----------------------------------------------------------
+  const { byPropDate, byPropCheckout, spansByProp } = useMemo(() => {
+    const byPropDate_ = Object.create(null);      // nights (occupied)
+    const byPropCheckout_ = Object.create(null);  // exact checkout calendar date
     const spansByProp_ = Object.create(null);
     const wStart = new Date(windowStart);
     const wEndExcl = new Date(windowEndPlus1);
@@ -173,15 +199,20 @@ export default function AvailabilityScreen() {
       if (!byPropDate_[pid][dateKey]) byPropDate_[pid][dateKey] = [];
       byPropDate_[pid][dateKey].push(r);
     };
+    const addCheckout = (pid, dateKey, r) => {
+      if (!byPropCheckout_[pid]) byPropCheckout_[pid] = Object.create(null);
+      if (!byPropCheckout_[pid][dateKey]) byPropCheckout_[pid][dateKey] = [];
+      byPropCheckout_[pid][dateKey].push(r);
+    };
 
     reservationsArray?.forEach(r => {
       const propId = normalizeId(
         r.propertyId?._id ??
-          r.property_id?._id ??
-          r.property?._id ??
-          r.propertyId ??
-          r.property_id ??
-          r.property,
+        r.property_id?._id ??
+        r.property?._id ??
+        r.propertyId ??
+        r.property_id ??
+        r.property,
       );
       if (!propId) return;
 
@@ -193,8 +224,16 @@ export default function AvailabilityScreen() {
 
       const sAll = addDays(rawStart, 0);
       const eAll = addDays(rawEnd, 0);
+
+      // Index checkout if it falls in window (for half-left)
+      if (eAll >= wStart && eAll <= wEndExcl) {
+        addCheckout(propId, isoOf(eAll), r);
+      }
+
+      // If nights don't intersect, still done (we showed the checkout half if visible)
       if (!(sAll < wEndExcl && eAll > wStart)) return;
 
+      // Clamp to our visible window for drawing the nights row + pills
       const s = clampDate(sAll, wStart, wEndExcl);
       const e = clampDate(eAll, wStart, wEndExcl);
 
@@ -214,15 +253,19 @@ export default function AvailabilityScreen() {
         0,
         Math.round((s - wStart) / (1000 * 60 * 60 * 24)),
       );
+
       if (!spansByProp_[propId]) spansByProp_[propId] = [];
+
+      const channelName = getChannelName(r);
+      const color = getChannelColor(channelName);
+
       spansByProp_[propId].push({
-        key: `${normalizeId(
-          r._id ?? r.id ?? r.reference ?? Math.random(),
-        )}-${startIndex}`,
+        key: `${normalizeId(r._id ?? r.id ?? r.reference ?? Math.random())}-${startIndex}`,
         name: getGuestName(r),
         startIndex,
         nights,
         dateKey: isoOf(s),
+        color,
       });
     });
 
@@ -230,7 +273,7 @@ export default function AvailabilityScreen() {
       spansByProp_[pid].sort((a, b) => a.startIndex - b.startIndex);
     });
 
-    return { byPropDate: byPropDate_, spansByProp: spansByProp_ };
+    return { byPropDate: byPropDate_, byPropCheckout: byPropCheckout_, spansByProp: spansByProp_ };
   }, [reservationsArray, windowStart, windowEndPlus1]);
 
   // month label
@@ -309,25 +352,79 @@ export default function AvailabilityScreen() {
     return () => cancelAnimationFrame(id);
   }, [contentWidth]);
 
-  // modal
+  // modal + resume flow
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
+  const [reopenRid, setReopenRid] = useState(null);
+  const [resumeOnFocus, setResumeOnFocus] = useState(false);
+
   const openCellModal = React.useCallback((propId, dateKey) => {
     setSelectedCell({ propId, dateKey });
+    setReopenRid(null);
     setModalVisible(true);
   }, []);
-  const closeModal = React.useCallback(() => setModalVisible(false), []);
+
+  const closeModal = React.useCallback(() => {
+    setModalVisible(false);
+    setReopenRid(null);
+    setResumeOnFocus(false);
+  }, []);
+
   const cellReservations = useMemo(() => {
     if (!selectedCell) return [];
     const { propId, dateKey } = selectedCell;
     return byPropDate[propId]?.[dateKey] ?? [];
   }, [selectedCell, byPropDate]);
 
+  const getResId = useCallback(
+    r =>
+      normalizeId(
+        r?._id ??
+        r?.id ??
+        r?.reservation_id ??
+        r?.booking_id ??
+        r?.reference ??
+        r,
+      ),
+    [],
+  );
+
+  const cellReservationsOrdered = useMemo(() => {
+    if (!reopenRid) return cellReservations;
+    const arr = [...cellReservations];
+    const i = arr.findIndex(rr => String(getResId(rr)) === String(reopenRid));
+    if (i > 0) {
+      const [chosen] = arr.splice(i, 1);
+      arr.unshift(chosen);
+    }
+    return arr;
+  }, [cellReservations, reopenRid, getResId]);
+
+  const handleCheckInPressFromModal = useCallback(
+    (reservationId) => {
+      setReopenRid(String(reservationId));
+      setResumeOnFocus(true);
+      setModalVisible(false);
+      navigation.navigate('GuestScreen', { reservationId });
+    },
+    [navigation],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (resumeOnFocus) {
+        setModalVisible(true);
+        setResumeOnFocus(false);
+      }
+    }, [resumeOnFocus])
+  );
+
   // loading / error
   const overallLoading =
     propertiesLoading ||
     reservationsLoading ||
     (!propertyList.length && !reservationsError);
+
   if (overallLoading) {
     return (
       <View style={styles.loader}>
@@ -401,6 +498,7 @@ export default function AvailabilityScreen() {
             contentWidth={contentWidth}
             rowRefsRef={rowRefsRef}
             byPropDate={byPropDate}
+            byPropCheckout={byPropCheckout}    // NEW
             spansByProp={spansByProp}
             selectedDateIndex={selectedDateIndex}
             openCellModal={openCellModal}
@@ -440,7 +538,9 @@ export default function AvailabilityScreen() {
         open={modalVisible}
         onClose={closeModal}
         onRequestClose={closeModal}
-        reservations={cellReservations}
+        reservations={cellReservationsOrdered}
+        initialReservationId={reopenRid}
+        onCheckInPress={handleCheckInPressFromModal}
       />
     </View>
   );

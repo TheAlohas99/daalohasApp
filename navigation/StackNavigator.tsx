@@ -4,6 +4,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from '../screens/Login';
 import TabNavigator from './TabNavigator';
 import GuestScreen from '../screens/GuestScreen';
+import MessageTemplate from '../screens/MessageTemplate';
+
+
 
 type StackNavigatorProps = {
   isLoggedIn: boolean;
@@ -24,6 +27,8 @@ export default function StackNavigator({
             {props => <TabNavigator {...props} setIsLoggedIn={setIsLoggedIn} />}
           </Stack.Screen>
           <Stack.Screen name="GuestScreen" component={GuestScreen} />
+          <Stack.Screen name="MessageTemplate" component={MessageTemplate} />
+
         </>
       ) : (
         <Stack.Screen name="Login">
