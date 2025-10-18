@@ -13,7 +13,7 @@ export const loadUser = createAsyncThunk(
         withCredentials: true,
       });
 
-      console.log(data);
+      // console.log(data);
       return data.user;
     } catch (err) {
       const msg =

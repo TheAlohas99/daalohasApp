@@ -98,7 +98,7 @@ export const pick = {
 
   guests: r => {
     const direct = toInt(
-      r?.guests_count ?? r?.no_of_guests ?? r?.num_guests ?? r?.total_guests
+      r?.guests_count ?? r?.no_of_guests ?? r?.num_guests ?? r?.total_guests,
     );
     if (direct > 0) return direct;
 
@@ -155,7 +155,9 @@ export const pick = {
     r?.booked_at ||
     r?.timestamp ||
     r?.booking_time,
-  PendingAmount: r =>(r?.amount_pending) || '',
+  PendingAmount: r => r?.amount_pending || '',
+  paymentStatus: r => r?.payment_status || '',
+  paidAmount: r => r?.amount_paid || '',
 
   // ✅ use your centralized util
   bookerName: r => getGuestName(r),
@@ -164,7 +166,7 @@ export const pick = {
     r?.booker_mobile || r?.guest_phone || r?.guest?.phone || r?.contact || '',
   email: r => r?.booker_email || r?.guest_email || r?.guest?.email || '',
   paid: r => r?.amount_paid || r?.paid_amount || r?.payments_total || 0,
-  reference: r =>
-     r?.reservation_id || r?.booking_id || r?.reference || '',
+  reference: r => r?.reservation_id || r?.booking_id || r?.reference || '',
+  reservationId: r => r?._id || '',
   status: r => r?.reservation_status || r?.status || r?.booking_status || '',
 };

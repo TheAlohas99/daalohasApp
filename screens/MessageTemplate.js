@@ -22,8 +22,10 @@ export default function MessageTemplate({ route }) {
     const fetchTemplates = async () => {
       try {
         const res = await axios.get(`${baseUrl}/api/v1/templates`);
-        console.log(res);
-        setTemplates(res.data || []);
+        const sortedTemplates = (res.data || []).sort((a, b) =>
+          a.template_name.localeCompare(b.template_name),
+        );
+        setTemplates(sortedTemplates);
       } catch (error) {
         console.error('Error fetching templates:', error);
         Alert.alert('Error', 'Could not load templates');

@@ -1,4 +1,3 @@
-// src/components/ReservationDetailsModal.js
 import React, { useEffect, useCallback, useState } from 'react';
 import {
   Modal,
@@ -7,13 +6,12 @@ import {
   Platform,
   ScrollView,
   Alert,
-  ActivityIndicator,
   BackHandler,
-  Text,
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 
 import ReservationNotes from './Reservation/ReservationNotes';
 import HeaderBar from './ReservationModals/HeaderBar';
@@ -23,19 +21,16 @@ import MoneyRow from './ReservationModals/MoneyRow';
 import SourceSection from './ReservationModals/SourceSection';
 import BookerCard from './ReservationModals/BookerCard';
 import ActionsRow from './ReservationModals/ActionsRow';
-import OtherReservationsList from './ReservationModals/OtherReservationsList';
 
 import { s } from '../styles/ReservationModalsDetailsStyle';
 import {
   pick,
   diffNights,
-  fmtDate,
   fmtTime,
   money,
   num,
 } from '../utils/reservationModals';
 import { displayString } from '../utils/display';
-import { useNavigation } from '@react-navigation/native';
 
 export default function ReservationDetailsModal({
   visible,
@@ -48,7 +43,6 @@ export default function ReservationDetailsModal({
   reloadReservation,
   initialReservationId,
   onCheckInPress,
-  navigation,
 }) {
   const isOpen =
     typeof visible === 'boolean'
@@ -61,9 +55,11 @@ export default function ReservationDetailsModal({
 
   const navigateToWhatsapp = useNavigation();
   const insets = useSafeAreaInsets();
+
   const [resList, setResList] = useState(
     Array.isArray(reservations) ? reservations : [],
   );
+
   useEffect(() => {
     setResList(Array.isArray(reservations) ? reservations : []);
   }, [reservations]);
@@ -101,11 +97,13 @@ export default function ReservationDetailsModal({
   const nights = diffNights(ci, co);
   const currency = pick.currency(r);
   const pendingAmount = num(pick.PendingAmount(r));
+  const paymentStatus = pick.paymentStatus(r);
+  const paidAmount = num(pick.paidAmount(r));
   const total = num(pick.totalAmount(r));
   const avg = total != null && nights > 0 ? total / nights : null;
 
   const [checkingOut, setCheckingOut] = useState(false);
-  const reservationId = displayString(pick.reference(r));
+  const reservationId = displayString(pick.reservationId(r));
   const CHECKOUT_URL = `https://api.daalohas.com/api/v1/checkout`;
 
   const doCheckout = useCallback(async () => {
@@ -157,7 +155,7 @@ export default function ReservationDetailsModal({
 
   const handleCheckInPress = useCallback(() => {
     if (typeof onCheckInPress === 'function') {
-      const rid = pick.reference(r);
+      const rid = pick.reservationId(r);
       onCheckInPress(rid);
     }
   }, [onCheckInPress, r]);
@@ -197,16 +195,26 @@ export default function ReservationDetailsModal({
       visible={isOpen}
       transparent
       animationType="slide"
-      onRequestClose={handleClose}
       statusBarTranslucent
+      onRequestClose={handleClose}
     >
-      <Pressable style={s.backdrop} onPress={handleClose}>
+      {/* Backdrop container */}
+      <View style={s.backdrop} pointerEvents="box-none">
+        {/* Tap outside to close (behind the sheet) */}
+        <Pressable
+          style={s.backdropPress}
+          onPress={handleClose}
+          android_ripple={null}
+        />
+
+        {/* Bottom sheet */}
         <View
           style={[
             s.sheet,
             {
               paddingBottom:
                 Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 12,
+              paddingTop: insets.top ? 0 : 0,
             },
           ]}
         >
@@ -230,7 +238,9 @@ export default function ReservationDetailsModal({
             onScroll={onScroll}
             scrollEventThrottle={16}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={true}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'on-drag' : 'none'}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
           >
             <KPIRow nights={nights} guests={pick.guests(r)} />
             <CheckPanel ci={ci} co={co} />
@@ -245,14 +255,23 @@ export default function ReservationDetailsModal({
             )}
 
             <BookerCard
+              reservationId={reservationId}
               name={pick.bookerName(r)}
               pendingAmount={pendingAmount}
+              paidAmount={paidAmount}
+              paymentStatus={paymentStatus}
               phone={pick.phone(r)}
               email={pick.email(r)}
               reference={pick.reference(r)}
               status={pick.status(r)}
               money={money}
               displayString={displayString}
+              onWhatsappPress={() =>
+                navigateToWhatsapp.navigate('MessageTemplate', {
+                  phone: pick.phone(r),
+                  reservation: r,
+                })
+              }
             />
 
             <ReservationNotes
@@ -266,43 +285,9 @@ export default function ReservationDetailsModal({
               onCheckout={handleCheckoutPress}
               checkingOut={checkingOut}
             />
-
-            {/* ✅ WhatsApp Button */}
-            <Pressable
-              onPress={() =>
-                navigateToWhatsapp.navigate('MessageTemplate', {
-                  phone: pick.phone(r),
-                  reservation: r,
-                })
-              }
-              disabled={!pick.phone(r)}
-              style={({ pressed }) => ({
-                backgroundColor: pick.phone(r) ? '#25D366' : '#a5d6a7',
-                padding: 12,
-                borderRadius: 8,
-                alignItems: 'center',
-                marginTop: 12,
-                opacity: pressed || !pick.phone(r) ? 0.7 : 1,
-              })}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-                WhatsApp
-              </Text>
-            </Pressable>
-
-            {resList.length > 1 && (
-              <OtherReservationsList
-                reservations={resList}
-                activeIndex={idx}
-                diffNights={diffNights}
-                pick={pick}
-                fmtDate={fmtDate}
-                money={money}
-              />
-            )}
           </ScrollView>
         </View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }

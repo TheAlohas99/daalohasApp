@@ -28,7 +28,9 @@ const PropertyRow = memo(
     const rowRef = useRef(null);
     useEffect(() => {
       rowRefsRef.current[propId] = rowRef.current;
-      return () => { delete rowRefsRef.current[propId]; };
+      return () => {
+        delete rowRefsRef.current[propId];
+      };
     }, [propId, rowRefsRef]);
 
     const spans = spansByProp[propId] || [];
@@ -42,12 +44,17 @@ const PropertyRow = memo(
       const hasCheckout = checkoutList.length > 0;
 
       const rangeType = hasBooked
-        ? (useCustomRangeType ? useCustomRangeType(date, reservations) : getRangeTypeFn(date, reservations))
+        ? useCustomRangeType
+          ? useCustomRangeType(date, reservations)
+          : getRangeTypeFn(date, reservations)
         : null;
 
       const Wrapper = hasBooked ? TouchableOpacity : View;
-      const props = hasBooked ? { activeOpacity: 0.85, onPress: () => openCellModal(propId, dateKey) } : {};
+      const props = hasBooked
+        ? { activeOpacity: 0.85, onPress: () => openCellModal(propId, dateKey) }
+        : {};
 
+      // console.log(props)
       return (
         <Wrapper
           key={`${propId}-${dateKey}`}
@@ -63,10 +70,10 @@ const PropertyRow = memo(
             <View
               style={[
                 styles.rangeBarBase,
-                rangeType === 'start' && styles.rangeStart,    // right half
-                rangeType === 'middle' && styles.rangeMiddle,  // full
-                rangeType === 'end' && styles.rangeEnd,        // full (last night)
-                rangeType === 'single' && styles.rangeSingle,  // right half
+                rangeType === 'start' && styles.rangeStart, // right half
+                rangeType === 'middle' && styles.rangeMiddle, // full
+                rangeType === 'end' && styles.rangeEnd, // full (last night)
+                rangeType === 'single' && styles.rangeSingle, // right half
               ]}
             />
           )}
@@ -78,7 +85,9 @@ const PropertyRow = memo(
 
           {/* Availability indicator */}
           {hasBooked ? (
-            <SText style={[styles.smallAvail, styles.smallAvailBooked]}>0</SText>
+            <SText style={[styles.smallAvail, styles.smallAvailBooked]}>
+              0
+            </SText>
           ) : (
             <SText
               style={[
@@ -109,20 +118,20 @@ const PropertyRow = memo(
         <TouchableOpacity
           activeOpacity={0.85}
           style={styles.propertyBand}
-          onPress={() => {
-            const currentDate = dates[selectedDateIndex];
-            if (currentDate) {
-              const dateKey = currentDate._iso || currentDate.toISOString().slice(0, 10);
-              openCellModal(propId, dateKey);
-            }
-          }}
+          // onPress={() => {
+          //   const currentDate = dates[selectedDateIndex];
+          //   if (currentDate) {
+          //     const dateKey = currentDate._iso || currentDate.toISOString().slice(0, 10);
+          //     openCellModal(propId, dateKey);
+          //   }
+          // }}
         >
           <SText style={styles.propertyBandText} numberOfLines={2}>
             {displayString(
               property.title ??
-              property.name ??
-              property.internal_name ??
-              property.property_title,
+                property.name ??
+                property.internal_name ??
+                property.property_title,
             )}
           </SText>
         </TouchableOpacity>
@@ -150,20 +159,33 @@ const PropertyRow = memo(
             </View>
 
             {/* vertical separators */}
-            <View pointerEvents="none" style={[styles.separatorsOverlay, { width: contentWidth }]}>
+            <View
+              pointerEvents="none"
+              style={[styles.separatorsOverlay, { width: contentWidth }]}
+            >
               {dates.map((_, idx) => {
                 if (idx === 0) return null;
                 const left = idx * dayWidth;
-                return <View key={`sep-${propId}-${idx}`} style={[styles.separatorLine, { left }]} />;
+                return (
+                  <View
+                    key={`sep-${propId}-${idx}`}
+                    style={[styles.separatorLine, { left }]}
+                  />
+                );
               })}
             </View>
 
             {/* name pills from mid-checkin to mid-checkout, vertically centered */}
-            <View pointerEvents="box-none" style={[styles.pillOverlay, { width: contentWidth }]}>
+            <View
+              pointerEvents="box-none"
+              style={[styles.pillOverlay, { width: contentWidth }]}
+            >
               {spans.map(span => {
                 // midpoints
-                const checkinMidX = span.startIndex * dayWidth + 6 + dayWidth / 2;
-                const checkoutMidX = (span.startIndex + span.nights) * dayWidth + 6 + dayWidth / 2;
+                const checkinMidX =
+                  span.startIndex * dayWidth + 6 + dayWidth / 2;
+                const checkoutMidX =
+                  (span.startIndex + span.nights) * dayWidth + 6 + dayWidth / 2;
 
                 // left & width so pill spans exactly mid→mid
                 const left = checkinMidX;
@@ -181,7 +203,10 @@ const PropertyRow = memo(
                       { left, width, backgroundColor: span.color },
                     ]}
                   >
-                    <SText style={[styles.namePillText, { color: '#fff' }]} numberOfLines={1}>
+                    <SText
+                      style={[styles.namePillText, { color: '#fff' }]}
+                      numberOfLines={1}
+                    >
                       {span.name}
                     </SText>
                   </TouchableOpacity>

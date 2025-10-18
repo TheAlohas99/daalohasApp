@@ -16,7 +16,11 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import {
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from '@react-navigation/native';
 
 import styles from '../styles/availabilityStyles';
 import SText from '../components/SText';
@@ -47,26 +51,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /* ------------ Channel → Color helpers ------------- */
 const getChannelName = r =>
   String(
-    r?.channel_name ??
-    r?.channel ??
-    r?.source ??
-    r?.portal ??
-    r?.origin ??
-    ''
+    r?.channel_name ?? r?.channel ?? r?.source ?? r?.portal ?? r?.origin ?? '',
   )
-  .trim()
-  .toLowerCase();
+    .trim()
+    .toLowerCase();
 
-const getChannelColor = (name) => {
+const getChannelColor = name => {
   const n = String(name || '').toLowerCase();
-  if (n.includes('airbnb')) return '#FF5A5F';            // airbnb red
-  if (n.includes('alohas')) return '#7EC8FF';            // alohasPortal light blue
+  if (n.includes('airbnb')) return '#FF5A5F'; // airbnb red
+  if (n.includes('alohas')) return '#7EC8FF'; // alohasPortal light blue
   if (n.includes('make') || n.includes('makemytrip')) return '#2ECC71'; // makemytrip green
-  if (n.includes('direct')) return '#FF8A80';            // direct light red
-  if (n.includes('agoda')) return '#FFA500';             // agoda orange
-  if (n.includes('booking')) return '#003580';           // booking dark blue
-  if (n) return '#9B59B6';                               // other -> purple
-  return '#9B59B6';                                      // fallback purple
+  if (n.includes('direct')) return '#FF8A80'; // direct light red
+  if (n.includes('agoda')) return '#FFA500'; // agoda orange
+  if (n.includes('booking')) return '#003580'; // booking dark blue
+  if (n) return '#9B59B6'; // other -> purple
+  return '#9B59B6'; // fallback purple
 };
 
 export default function AvailabilityScreen() {
@@ -74,13 +73,15 @@ export default function AvailabilityScreen() {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const { properties, propertiesLoading } = useSelector(
+  const { role, properties, propertiesLoading } = useSelector(
     s => ({
+      role: s.property.role,
       properties: (s.property && s.property.data) || [],
       propertiesLoading: (s.property && s.property.loading) || false,
     }),
     shallowEqual,
   );
+  console.log(role);
 
   const { reservationsArray, reservationsLoading, reservationsError } =
     useSelector(
@@ -97,7 +98,7 @@ export default function AvailabilityScreen() {
   const dayWidth = Math.max(64, Math.floor(screenWidth / 7));
 
   // state
-  const [selectedPropertyIds, setSelectedPropertyIds] = useState([]); // [] => All
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState([]);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -137,7 +138,9 @@ export default function AvailabilityScreen() {
         if (userJson) {
           const user = JSON.parse(userJson);
           const { email, mobile } = user;
-          dispatch(getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }));
+          dispatch(
+            getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }),
+          );
         }
       } catch (error) {
         console.error('Error loading user from storage:', error);
@@ -184,12 +187,9 @@ export default function AvailabilityScreen() {
     return propertyList.filter(p => set.has(getId(p)));
   }, [propertyList, selectedPropertyIds, getId]);
 
-  // -----------------------------------------------------------
-  // PRE-INDEX: occupied nights + explicit checkout day
-  // -----------------------------------------------------------
   const { byPropDate, byPropCheckout, spansByProp } = useMemo(() => {
-    const byPropDate_ = Object.create(null);      // nights (occupied)
-    const byPropCheckout_ = Object.create(null);  // exact checkout calendar date
+    const byPropDate_ = Object.create(null);
+    const byPropCheckout_ = Object.create(null);
     const spansByProp_ = Object.create(null);
     const wStart = new Date(windowStart);
     const wEndExcl = new Date(windowEndPlus1);
@@ -208,11 +208,11 @@ export default function AvailabilityScreen() {
     reservationsArray?.forEach(r => {
       const propId = normalizeId(
         r.propertyId?._id ??
-        r.property_id?._id ??
-        r.property?._id ??
-        r.propertyId ??
-        r.property_id ??
-        r.property,
+          r.property_id?._id ??
+          r.property?._id ??
+          r.propertyId ??
+          r.property_id ??
+          r.property,
       );
       if (!propId) return;
 
@@ -260,7 +260,9 @@ export default function AvailabilityScreen() {
       const color = getChannelColor(channelName);
 
       spansByProp_[propId].push({
-        key: `${normalizeId(r._id ?? r.id ?? r.reference ?? Math.random())}-${startIndex}`,
+        key: `${normalizeId(
+          r._id ?? r.id ?? r.reference ?? Math.random(),
+        )}-${startIndex}`,
         name: getGuestName(r),
         startIndex,
         nights,
@@ -273,7 +275,11 @@ export default function AvailabilityScreen() {
       spansByProp_[pid].sort((a, b) => a.startIndex - b.startIndex);
     });
 
-    return { byPropDate: byPropDate_, byPropCheckout: byPropCheckout_, spansByProp: spansByProp_ };
+    return {
+      byPropDate: byPropDate_,
+      byPropCheckout: byPropCheckout_,
+      spansByProp: spansByProp_,
+    };
   }, [reservationsArray, windowStart, windowEndPlus1]);
 
   // month label
@@ -380,11 +386,11 @@ export default function AvailabilityScreen() {
     r =>
       normalizeId(
         r?._id ??
-        r?.id ??
-        r?.reservation_id ??
-        r?.booking_id ??
-        r?.reference ??
-        r,
+          r?.id ??
+          r?.reservation_id ??
+          r?.booking_id ??
+          r?.reference ??
+          r,
       ),
     [],
   );
@@ -401,7 +407,7 @@ export default function AvailabilityScreen() {
   }, [cellReservations, reopenRid, getResId]);
 
   const handleCheckInPressFromModal = useCallback(
-    (reservationId) => {
+    reservationId => {
       setReopenRid(String(reservationId));
       setResumeOnFocus(true);
       setModalVisible(false);
@@ -416,7 +422,7 @@ export default function AvailabilityScreen() {
         setModalVisible(true);
         setResumeOnFocus(false);
       }
-    }, [resumeOnFocus])
+    }, [resumeOnFocus]),
   );
 
   // loading / error
@@ -498,7 +504,7 @@ export default function AvailabilityScreen() {
             contentWidth={contentWidth}
             rowRefsRef={rowRefsRef}
             byPropDate={byPropDate}
-            byPropCheckout={byPropCheckout}    // NEW
+            byPropCheckout={byPropCheckout} // NEW
             spansByProp={spansByProp}
             selectedDateIndex={selectedDateIndex}
             openCellModal={openCellModal}
@@ -531,17 +537,20 @@ export default function AvailabilityScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Details Modal */}
-      <ReservationDetailsModal
-        visible={modalVisible}
-        isVisible={modalVisible}
-        open={modalVisible}
-        onClose={closeModal}
-        onRequestClose={closeModal}
-        reservations={cellReservationsOrdered}
-        initialReservationId={reopenRid}
-        onCheckInPress={handleCheckInPressFromModal}
-      />
+      {role === 'owner' ? (
+        ''
+      ) : (
+        <ReservationDetailsModal
+          visible={modalVisible}
+          isVisible={modalVisible}
+          open={modalVisible}
+          onClose={closeModal}
+          onRequestClose={closeModal}
+          reservations={cellReservationsOrdered}
+          initialReservationId={reopenRid}
+          onCheckInPress={handleCheckInPressFromModal}
+        />
+      )}
     </View>
   );
 }

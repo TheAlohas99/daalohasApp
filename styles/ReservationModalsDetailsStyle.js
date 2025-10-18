@@ -1,7 +1,19 @@
 import { StyleSheet } from 'react-native';
 
 export const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+    // lets children (sheet) receive touches without the container blocking them
+    pointerEvents: 'box-none',
+  },
+
+  // full-screen pressable behind the sheet
+  backdropPress: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
   sheet: {
     backgroundColor: '#fff',
     height: '98%',
@@ -10,6 +22,8 @@ export const s = StyleSheet.create({
     borderTopRightRadius: 16,
     paddingHorizontal: 14,
     paddingTop: 0,
+    zIndex: 1,
+    elevation: 10, // Android stacking + shadow
   },
 
   // Header

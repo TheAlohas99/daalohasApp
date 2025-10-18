@@ -42,7 +42,7 @@ export default function HeaderBar({
           </SText>
         </View>
 
-        {total > 1 ? (
+        {/* {total > 1 ? (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={onPrev} style={{ padding: 6 }}>
               <Icon name="chevron-left" size={22} color="#17364a" />
@@ -56,7 +56,7 @@ export default function HeaderBar({
           </View>
         ) : (
           <View style={{ width: 44 }} />
-        )}
+        )} */}
       </View>
     </View>
   );
