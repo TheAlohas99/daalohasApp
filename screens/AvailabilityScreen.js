@@ -1,4 +1,4 @@
-// AvailabilityScreen — with half-day check-in/out visuals
+// AvailabilityScreen — with half-day check-in/out visuals & pull-to-refresh
 import React, {
   useCallback,
   useEffect,
@@ -13,6 +13,7 @@ import {
   Text,
   FlatList,
   useWindowDimensions,
+  RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
@@ -58,14 +59,14 @@ const getChannelName = r =>
 
 const getChannelColor = name => {
   const n = String(name || '').toLowerCase();
-  if (n.includes('airbnb')) return '#FF5A5F'; // airbnb red
-  if (n.includes('alohas')) return '#7EC8FF'; // alohasPortal light blue
-  if (n.includes('make') || n.includes('makemytrip')) return '#2ECC71'; // makemytrip green
-  if (n.includes('direct')) return '#FF8A80'; // direct light red
-  if (n.includes('agoda')) return '#FFA500'; // agoda orange
-  if (n.includes('booking')) return '#003580'; // booking dark blue
-  if (n) return '#9B59B6'; // other -> purple
-  return '#9B59B6'; // fallback purple
+  if (n.includes('airbnb')) return '#FF5A5F';
+  if (n.includes('alohas')) return '#7EC8FF';
+  if (n.includes('make') || n.includes('makemytrip')) return '#2ECC71';
+  if (n.includes('direct')) return '#FF8A80';
+  if (n.includes('agoda')) return '#FFA500';
+  if (n.includes('booking')) return '#003580';
+  if (n) return '#9B59B6';
+  return '#9B59B6';
 };
 
 export default function AvailabilityScreen() {
@@ -81,7 +82,6 @@ export default function AvailabilityScreen() {
     }),
     shallowEqual,
   );
-  console.log(role);
 
   const { reservationsArray, reservationsLoading, reservationsError } =
     useSelector(
@@ -93,7 +93,6 @@ export default function AvailabilityScreen() {
       shallowEqual,
     );
 
-  // layout
   const { width: screenWidth } = useWindowDimensions();
   const dayWidth = Math.max(64, Math.floor(screenWidth / 7));
 
@@ -106,8 +105,8 @@ export default function AvailabilityScreen() {
   });
   const [daysCount, setDaysCount] = useState(INITIAL_DAYS);
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // dates window
   const dates = useMemo(() => {
     const list = [];
     for (let i = 0; i < daysCount; i++) {
@@ -152,12 +151,11 @@ export default function AvailabilityScreen() {
     (propertyId, start, end) => {
       const params = { start, end };
       if (propertyId && isMongoId(propertyId)) params.propertyId = propertyId;
-      dispatch(fetchReservationsByDate(params));
+      return dispatch(fetchReservationsByDate(params));
     },
     [dispatch],
   );
 
-  // dedupe window fetches — always fetch ALL; filter client-side
   const lastFetchRef = useRef({ pid: null, s: null, e: null });
   useEffect(() => {
     if (!dates.length) return;
@@ -172,7 +170,6 @@ export default function AvailabilityScreen() {
     fetchWindow('all', windowStartISO, windowEndISO);
   }, [dates.length, windowStartISO, windowEndISO, fetchWindow]);
 
-  // property filtering
   const getId = useCallback(
     p => normalizeId(p?._id ?? p?.propertyId ?? p?.id ?? p),
     [],
@@ -182,7 +179,7 @@ export default function AvailabilityScreen() {
     [properties],
   );
   const filteredProperties = useMemo(() => {
-    if (!selectedPropertyIds?.length) return propertyList.filter(p => getId(p)); // ALL
+    if (!selectedPropertyIds?.length) return propertyList.filter(p => getId(p));
     const set = new Set(selectedPropertyIds);
     return propertyList.filter(p => set.has(getId(p)));
   }, [propertyList, selectedPropertyIds, getId]);
@@ -225,15 +222,11 @@ export default function AvailabilityScreen() {
       const sAll = addDays(rawStart, 0);
       const eAll = addDays(rawEnd, 0);
 
-      // Index checkout if it falls in window (for half-left)
-      if (eAll >= wStart && eAll <= wEndExcl) {
+      if (eAll >= wStart && eAll <= wEndExcl)
         addCheckout(propId, isoOf(eAll), r);
-      }
 
-      // If nights don't intersect, still done (we showed the checkout half if visible)
       if (!(sAll < wEndExcl && eAll > wStart)) return;
 
-      // Clamp to our visible window for drawing the nights row + pills
       const s = clampDate(sAll, wStart, wEndExcl);
       const e = clampDate(eAll, wStart, wEndExcl);
 
@@ -253,7 +246,6 @@ export default function AvailabilityScreen() {
         0,
         Math.round((s - wStart) / (1000 * 60 * 60 * 24)),
       );
-
       if (!spansByProp_[propId]) spansByProp_[propId] = [];
 
       const channelName = getChannelName(r);
@@ -282,8 +274,7 @@ export default function AvailabilityScreen() {
     };
   }, [reservationsArray, windowStart, windowEndPlus1]);
 
-  // month label
-  const getMonthLabel = React.useCallback(
+  const getMonthLabel = useCallback(
     firstIndex => {
       const start = dates[firstIndex] || dates[0];
       const end =
@@ -310,7 +301,6 @@ export default function AvailabilityScreen() {
     setCurrentMonth(getMonthLabel(0));
   }, [dates, getMonthLabel]);
 
-  // scroll sync
   const headerRef = useRef(null);
   const rowRefsRef = useRef({});
   const syncingRef = useRef(false);
@@ -358,19 +348,18 @@ export default function AvailabilityScreen() {
     return () => cancelAnimationFrame(id);
   }, [contentWidth]);
 
-  // modal + resume flow
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
   const [reopenRid, setReopenRid] = useState(null);
   const [resumeOnFocus, setResumeOnFocus] = useState(false);
 
-  const openCellModal = React.useCallback((propId, dateKey) => {
+  const openCellModal = useCallback((propId, dateKey) => {
     setSelectedCell({ propId, dateKey });
     setReopenRid(null);
     setModalVisible(true);
   }, []);
 
-  const closeModal = React.useCallback(() => {
+  const closeModal = useCallback(() => {
     setModalVisible(false);
     setReopenRid(null);
     setResumeOnFocus(false);
@@ -425,11 +414,29 @@ export default function AvailabilityScreen() {
     }, [resumeOnFocus]),
   );
 
-  // loading / error
   const overallLoading =
     propertiesLoading ||
     reservationsLoading ||
     (!propertyList.length && !reservationsError);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const userJson = await AsyncStorage.getItem('user');
+      if (userJson) {
+        const user = JSON.parse(userJson);
+        const { email, mobile } = user;
+        await dispatch(
+          getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }),
+        );
+      }
+      await fetchWindow('all', windowStartISO, windowEndISO);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [dispatch, fetchWindow, windowStartISO, windowEndISO]);
 
   if (overallLoading) {
     return (
@@ -438,6 +445,7 @@ export default function AvailabilityScreen() {
       </View>
     );
   }
+
   if (reservationsError) {
     return (
       <View style={styles.loader}>
@@ -448,10 +456,8 @@ export default function AvailabilityScreen() {
     );
   }
 
-  // UI
   return (
     <View style={styles.container}>
-      {/* Multi property picker (ALL by default) */}
       <MultiPropertyPicker
         items={propertyList}
         selectedIds={selectedPropertyIds}
@@ -459,7 +465,6 @@ export default function AvailabilityScreen() {
         getId={getId}
       />
 
-      {/* Month header */}
       <View style={styles.monthHeader}>
         <TouchableOpacity
           onPress={() => setStartDate(prev => addDays(prev, -7))}
@@ -480,7 +485,6 @@ export default function AvailabilityScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Week header (scroll-synced) */}
       <WeekHeader
         headerRef={headerRef}
         dates={dates}
@@ -491,7 +495,6 @@ export default function AvailabilityScreen() {
         contentWidth={contentWidth}
       />
 
-      {/* Properties list */}
       <FlatList
         data={filteredProperties}
         keyExtractor={p => getId(p)}
@@ -504,13 +507,21 @@ export default function AvailabilityScreen() {
             contentWidth={contentWidth}
             rowRefsRef={rowRefsRef}
             byPropDate={byPropDate}
-            byPropCheckout={byPropCheckout} // NEW
+            byPropCheckout={byPropCheckout}
             spansByProp={spansByProp}
             selectedDateIndex={selectedDateIndex}
             openCellModal={openCellModal}
             syncTo={syncTo}
           />
         )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0b486b"
+            colors={['#0b486b']}
+          />
+        }
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={7}
@@ -523,7 +534,6 @@ export default function AvailabilityScreen() {
         contentContainerStyle={{ paddingBottom: 16 }}
       />
 
-      {/* Load more days */}
       {daysCount < MAX_DAYS && (
         <TouchableOpacity
           style={{ alignSelf: 'center', marginVertical: 8, padding: 8 }}
@@ -537,9 +547,7 @@ export default function AvailabilityScreen() {
         </TouchableOpacity>
       )}
 
-      {role === 'owner' ? (
-        ''
-      ) : (
+      {role === 'owner' ? null : (
         <ReservationDetailsModal
           visible={modalVisible}
           isVisible={modalVisible}

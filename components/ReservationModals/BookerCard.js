@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Pressable } from 'react-native';
 import SText from '../SText';
 import { s } from '../../styles/ReservationModalsDetailsStyle';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { useNavigation } from '@react-navigation/native';
+import { fetchReservationById, selectReservationObj } from '../../redux/slice/ReservationSlice';
+import { useDispatch, useSelector } from 'react-redux';
 
 export default function BookerCard({
-  reservationId, 
+  reservationId,
   name,
   pendingAmount,
   paidAmount,
@@ -21,10 +23,13 @@ export default function BookerCard({
   onWhatsappPress,
 }) {
   const navigation = useNavigation();
+  const dispatch = useDispatch();
+  const reservation = useSelector(s => selectReservationObj(s, reservationId));
+  console.log(reservation);
+  const safeName = displayString(reservation?.booker_first_name || name);
+  const safePhone = displayString(reservation?.booker_mobile || phone);
+  const safeEmail = displayString(reservation?.booker_email || email);
 
-  const safeName = displayString(name);
-  const safePhone = displayString(phone);
-  const safeEmail = displayString(email);
 
   const goToUpdate = () => {
     navigation.navigate('UpdateBooker', {
@@ -33,6 +38,10 @@ export default function BookerCard({
     });
   };
 
+  useEffect(() => {
+    if (reservationId) dispatch(fetchReservationById({ reservationId }));
+  }, [dispatch, reservationId]);
+
   return (
     <View style={s.card}>
       <SText style={s.cardHeader}>BOOKER</SText>
@@ -40,12 +49,14 @@ export default function BookerCard({
       <View style={s.bookerRow}>
         <View style={s.avatar}>
           <SText style={s.avatarLetters}>
-            {String(safeName || 'G').trim().slice(0, 1).toUpperCase()}
+            {String(safeName || 'G')
+              .trim()
+              .slice(0, 1)
+              .toUpperCase()}
           </SText>
         </View>
 
         <View style={{ flex: 1 }}>
-          {/* ✅ Booker Name + Edit + WhatsApp */}
           <View
             style={{
               flexDirection: 'row',
@@ -99,7 +110,9 @@ export default function BookerCard({
       </View>
 
       {/* Contact Info */}
-      {!!reference && <KV label="Reservation ID" value={displayString(reference)} />}
+      {!!reference && (
+        <KV label="Reservation ID" value={displayString(reference)} />
+      )}
 
       {pendingAmount !== null && pendingAmount !== undefined && (
         <KV label="Pending Amount" value={money(pendingAmount, currency)} />
@@ -112,7 +125,9 @@ export default function BookerCard({
       {!!safePhone && <KV label="Phone" value={safePhone} />}
       {!!safeEmail && <KV label="Email" value={safeEmail} />}
 
-      {paymentStatus && <KV label="Payment Status" value={displayString(paymentStatus)} />}
+      {paymentStatus && (
+        <KV label="Payment Status" value={displayString(paymentStatus)} />
+      )}
       {status && <KV label="Status" value={displayString(status)} />}
     </View>
   );

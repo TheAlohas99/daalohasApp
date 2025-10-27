@@ -1,4 +1,3 @@
-// src/screens/UpdateBooker.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -14,8 +13,8 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import SText from '../components/SText';
-import ServicesDropdown from '../components/GuestServices/ServicesDropdown';
+import SText from '../components/SText'; // Assuming SText is a custom Text component
+import ServicesDropdown from '../components/GuestServices/ServicesDropdown'; // UPDATED PATH
 import {
   fetchReservationById,
   selectReservationObj,
@@ -23,7 +22,7 @@ import {
 } from '../redux/slice/ReservationSlice';
 import { useDispatch, useSelector } from 'react-redux';
 
-/* ===== Theme & API ===== */
+/* ===== Theme & API (kept for context, assuming this file works with it) ===== */
 const BRAND = {
   primary: '#0b86d0',
   primaryDark: '#0b486b',
@@ -83,27 +82,45 @@ export default function UpdateBooker() {
 
   const { reservationId } = route.params || {};
   const reservation = useSelector(s => selectReservationObj(s, reservationId));
-  console.log(reservation);
 
   // Local editable fields (prefilled from reservation)
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState(''); // keep as STRING for TextInput
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
-  const [serviceIds, setServiceIds] = useState([]); // selected guest service _ids
+  
+  // State to hold objects in the format expected by ServicesDropdown: { id: '...', price: X }
+  const [selectedServices, setSelectedServices] = useState([]); 
 
   // Prefill inputs when reservation arrives/changes
   useEffect(() => {
     if (reservation && reservationId) {
       setName(String(pickName(reservation) ?? ''));
-      // Ensure string for TextInput even if backend sends number
       setPhone(String(pickPhone(reservation) ?? ''));
       setEmail(String(pickEmail(reservation) ?? ''));
+      
       if (
         Array.isArray(reservation.service) &&
         reservation.service.length > 0
       ) {
-        setServiceIds(reservation.service.filter(Boolean));
+        // Map the backend's 'serviceId' to the dropdown's 'id'
+        const mappedServices = reservation.service
+            .filter(s => s?.serviceId)
+            .map(s => ({
+                id: s.serviceId, // Map serviceId to 'id'
+                price: toNumber(s.price), // Use price from reservation (potentially custom)
+                // We keep original _id if needed, but the dropdown only cares about id/price
+                _id: s._id || undefined, 
+            }));
+            
+        // Filter out bad data and ensure uniqueness by service ID
+        const uniqueServices = Array.from(new Map(
+            mappedServices.map(s => [s.id, s])
+        ).values());
+
+        setSelectedServices(uniqueServices);
+      } else {
+          setSelectedServices([]);
       }
     }
   }, [reservationId, reservation]);
@@ -127,6 +144,17 @@ export default function UpdateBooker() {
       const nameTrim = (name || '').trim();
       const phoneTrim = (phone || '').trim();
       const emailTrim = (email || '').trim();
+      
+      // Map the selectedServices state back to the backend's required format:
+      // [{ id: '...', price: X }] -> [{ serviceId: '...', price: X }]
+      const servicesForBackend = selectedServices
+        .map(svc => ({
+          serviceId: svc.id, 
+          // Ensure price is a number and includes the user's editable value
+          price: toNumber(svc.price), 
+          // You might include other fields like svc._id if your API requires it
+        }))
+        .filter(svc => svc.serviceId); // Only include valid service entries
 
       // Dispatch the unified updateReservationNotes thunk
       const resultAction = await dispatch(
@@ -138,12 +166,13 @@ export default function UpdateBooker() {
             phoneTrim && Number.isFinite(Number(phoneTrim))
               ? Number(phoneTrim)
               : undefined,
-          service: Array.from(new Set(serviceIds || [])),
+          // Pass the mapped array of objects for the service field
+          service: servicesForBackend, 
         }),
       );
 
       if (updateReservationNotes.fulfilled.match(resultAction)) {
-        Alert.alert('Success', 'Booker updated successfully.', [
+        Alert.alert('Success', 'Guest updated successfully.', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
       } else {
@@ -270,8 +299,8 @@ export default function UpdateBooker() {
 
             {/* Guest Services (footer shows: services total + reservation paid + grand total) */}
             <ServicesDropdown
-              value={serviceIds}
-              onChange={setServiceIds}
+              value={selectedServices} // Pass array of { id: '...', price: X }
+              onChange={setSelectedServices} // Receive array of { id: '...', price: X }
               reservationPaidAmount={reservationPaidAmount}
               currencySymbol="₹"
             />

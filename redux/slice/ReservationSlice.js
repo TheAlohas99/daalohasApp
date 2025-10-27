@@ -190,18 +190,13 @@ export const updateReservationNotes = createAsyncThunk(
 const reservationSlice = createSlice({
   name: 'reservations',
   initialState: {
-    // list-by-date
     reservations: [],
     total: 0,
     loading: false,
     error: null,
-
-    // by-id map for details
-    byId: {}, // { [id]: { ...reservation, notes, __raw } }
+    byId: {}, 
     loadingById: {},
     errorById: {},
-
-    // updating flags for PUT
     updatingById: {},
     updateErrorById: {},
   },

@@ -26,12 +26,18 @@ const PropertyRow = memo(
 
     // keep a ref per-row so we can sync scroll positions
     const rowRef = useRef(null);
-    useEffect(() => {
-      rowRefsRef.current[propId] = rowRef.current;
-      return () => {
-        delete rowRefsRef.current[propId];
-      };
-    }, [propId, rowRefsRef]);
+   useEffect(() => {
+  if (rowRefsRef?.current) {
+    rowRefsRef.current[propId] = rowRef.current;
+  }
+
+  return () => {
+    if (rowRefsRef?.current) {
+      delete rowRefsRef.current[propId];
+    }
+  };
+}, [propId, rowRefsRef]);
+
 
     const spans = spansByProp[propId] || [];
 
@@ -145,7 +151,7 @@ const PropertyRow = memo(
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ width: contentWidth }}
-          onScroll={e => syncTo(e.nativeEvent.contentOffset.x, propId)}
+          onScroll={e => syncTo?.(e.nativeEvent.contentOffset.x, propId)}
           snapToInterval={dayWidth}
           decelerationRate="fast"
           bounces={false}

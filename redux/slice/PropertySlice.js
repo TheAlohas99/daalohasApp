@@ -38,7 +38,7 @@ const propertySlice = createSlice({
   name: 'property',
   initialState: {
     role: null,
-    data: [], // properties list
+    data: [],
     loading: false,
     error: null,
   },

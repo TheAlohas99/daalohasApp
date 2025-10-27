@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {jwtDecode} from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
 
 import LoginScreen from '../screens/Login';
 import TabNavigator from './TabNavigator';
@@ -10,7 +10,7 @@ import GuestScreen from '../screens/GuestScreen';
 import MessageTemplate from '../screens/MessageTemplate';
 import NewReservationsScreen from '../screens/NewReservationsScreen';
 import CancelledReservationsScreen from '../screens/CancelledReservationsScreen';
-import UpdateBooker from "../screens/UpdateBooker"
+import UpdateBooker from '../screens/UpdateBooker';
 
 type StackNavigatorProps = {
   isLoggedIn: boolean;
@@ -23,13 +23,12 @@ export default function StackNavigator({
   isLoggedIn,
   setIsLoggedIn,
 }: StackNavigatorProps) {
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const verifyToken = async () => {
       try {
         const token = await AsyncStorage.getItem('token');
-        // console.log('Token from storage:', token);
 
         if (!token) {
           setIsLoggedIn(false);
@@ -37,22 +36,18 @@ export default function StackNavigator({
           return;
         }
 
-        // Use .default() for jwt-decode v4
         const decoded: any = jwtDecode(token);
-        // console.log('Decoded JWT:', decoded);
 
-        // Check if exp exists and token is expired
         if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-          // console.log('Token expired');
-          await AsyncStorage.removeItem('token');
+          console.log('Token expired');
+          await AsyncStorage.multiRemove(['token', 'user']);
           setIsLoggedIn(false);
         } else {
-          // Token valid
           setIsLoggedIn(true);
         }
       } catch (err) {
         console.log('Invalid token', err);
-        await AsyncStorage.removeItem('token');
+        await AsyncStorage.multiRemove(['token', 'user']);
         setIsLoggedIn(false);
       } finally {
         setLoading(false);
@@ -74,8 +69,14 @@ export default function StackNavigator({
           </Stack.Screen>
           <Stack.Screen name="GuestScreen" component={GuestScreen} />
           <Stack.Screen name="MessageTemplate" component={MessageTemplate} />
-          <Stack.Screen name="NewReservations" component={NewReservationsScreen} />
-          <Stack.Screen name="CancelledReservations" component={CancelledReservationsScreen} />
+          <Stack.Screen
+            name="NewReservations"
+            component={NewReservationsScreen}
+          />
+          <Stack.Screen
+            name="CancelledReservations"
+            component={CancelledReservationsScreen}
+          />
           <Stack.Screen name="UpdateBooker" component={UpdateBooker} />
         </>
       ) : (

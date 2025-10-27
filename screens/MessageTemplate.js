@@ -77,7 +77,19 @@ export default function MessageTemplate({ route }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Select a Template</Text>
+      <View style={styles.HeadingBar}>
+        <Text style={styles.heading}>Select a Template</Text>
+        <Pressable
+          style={[
+            styles.button,
+            { backgroundColor: selected ? '#25D366' : 'gray' },
+          ]}
+          disabled={!selected}
+          onPress={sendWhatsApp}
+        >
+          <Text style={styles.buttonText}>Send WhatsApp</Text>
+        </Pressable>
+      </View>
 
       <FlatList
         data={templates}
@@ -98,23 +110,18 @@ export default function MessageTemplate({ route }) {
           </Pressable>
         )}
       />
-
-      <Pressable
-        style={[
-          styles.button,
-          { backgroundColor: selected ? '#25D366' : 'gray' },
-        ]}
-        disabled={!selected}
-        onPress={sendWhatsApp}
-      >
-        <Text style={styles.buttonText}>Send WhatsApp</Text>
-      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: '#fff' },
+  HeadingBar: {
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 12, 
+  },
   heading: { fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
   card: {
     padding: 12,
@@ -125,10 +132,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: 'bold' },
   body: { fontSize: 14, marginTop: 6, color: '#555' },
   button: {
-    padding: 14,
+    padding: 7,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 20,
+    // marginTop: 20,
   },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });

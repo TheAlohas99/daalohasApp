@@ -131,7 +131,7 @@ export default function ReservationsDashboardScreen() {
     error: reservationsError = null,
   } = useSelector(s => s.dashboardreservation || {}, shallowEqual);
 
-  console.log(apiObj);
+  // console.log(apiObj);
 
   const { properties } = useSelector(
     s => ({ properties: (s.property && s.property.data) || [] }),
