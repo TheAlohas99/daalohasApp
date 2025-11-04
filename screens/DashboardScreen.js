@@ -186,7 +186,6 @@ export default function ReservationsDashboardScreen() {
       return;
     lastFetchRef.current = { date: start, propertyKey: propKey };
 
-    // Force 'all' when propertyIdParam is undefined so backend doesn't filter to nothing
     dispatch(
       fetchReservationsByDates({
         start,
