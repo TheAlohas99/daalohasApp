@@ -129,7 +129,7 @@ export default function AvailabilityScreen() {
   const windowStartISO = useMemo(() => isoOf(windowStart), [windowStart]);
   const windowEndISO = useMemo(() => isoOf(windowEnd), [windowEnd]);
 
-  // fetch boot
+  // fetch properties on mount
   useEffect(() => {
     (async () => {
       try {
@@ -174,6 +174,7 @@ export default function AvailabilityScreen() {
     p => normalizeId(p?._id ?? p?.propertyId ?? p?.id ?? p),
     [],
   );
+
   const propertyList = useMemo(
     () => (Array.isArray(properties) ? properties : []),
     [properties],
@@ -184,6 +185,7 @@ export default function AvailabilityScreen() {
     return propertyList.filter(p => set.has(getId(p)));
   }, [propertyList, selectedPropertyIds, getId]);
 
+  /* ------- Map reservations by property/date -------- */
   const { byPropDate, byPropCheckout, spansByProp } = useMemo(() => {
     const byPropDate_ = Object.create(null);
     const byPropCheckout_ = Object.create(null);
@@ -195,11 +197,6 @@ export default function AvailabilityScreen() {
       if (!byPropDate_[pid]) byPropDate_[pid] = Object.create(null);
       if (!byPropDate_[pid][dateKey]) byPropDate_[pid][dateKey] = [];
       byPropDate_[pid][dateKey].push(r);
-    };
-    const addCheckout = (pid, dateKey, r) => {
-      if (!byPropCheckout_[pid]) byPropCheckout_[pid] = Object.create(null);
-      if (!byPropCheckout_[pid][dateKey]) byPropCheckout_[pid][dateKey] = [];
-      byPropCheckout_[pid][dateKey].push(r);
     };
 
     reservationsArray?.forEach(r => {
@@ -221,10 +218,6 @@ export default function AvailabilityScreen() {
 
       const sAll = addDays(rawStart, 0);
       const eAll = addDays(rawEnd, 0);
-
-      if (eAll >= wStart && eAll <= wEndExcl)
-        addCheckout(propId, isoOf(eAll), r);
-
       if (!(sAll < wEndExcl && eAll > wStart)) return;
 
       const s = clampDate(sAll, wStart, wEndExcl);
@@ -263,10 +256,6 @@ export default function AvailabilityScreen() {
       });
     });
 
-    Object.keys(spansByProp_).forEach(pid => {
-      spansByProp_[pid].sort((a, b) => a.startIndex - b.startIndex);
-    });
-
     return {
       byPropDate: byPropDate_,
       byPropCheckout: byPropCheckout_,
@@ -274,32 +263,23 @@ export default function AvailabilityScreen() {
     };
   }, [reservationsArray, windowStart, windowEndPlus1]);
 
-  const getMonthLabel = useCallback(
-    firstIndex => {
-      const start = dates[firstIndex] || dates[0];
-      const end =
-        dates[Math.min(firstIndex + 6, dates.length - 1)] ||
-        dates[dates.length - 1];
-      if (!start || !end) return '';
-      const sM = start.toLocaleDateString(undefined, { month: 'long' });
-      const sY = start.getFullYear();
-      const eM = end.toLocaleDateString(undefined, { month: 'long' });
-      const eY = end.getFullYear();
-      if (sM === eM && sY === eY) return `${sM} ${sY}`;
-      if (sY === eY) return `${sM} / ${eM} ${sY}`;
-      return `${sM} ${sY} / ${eM} ${eY}`;
-    },
-    [dates],
-  );
+  const [currentMonth, setCurrentMonth] = useState('');
+  const debouncedSetMonth = useDebounced(idx => {
+    const start = dates[idx] || dates[0];
+    const end =
+      dates[Math.min(idx + 6, dates.length - 1)] || dates[dates.length - 1];
+    if (!start || !end) return;
+    const sM = start.toLocaleDateString(undefined, { month: 'long' });
+    const sY = start.getFullYear();
+    const eM = end.toLocaleDateString(undefined, { month: 'long' });
+    const eY = end.getFullYear();
+    if (sM === eM && sY === eY)
+      setCurrentMonth(`${sM} ${sY}`);
+    else if (sY === eY) setCurrentMonth(`${sM} / ${eM} ${sY}`);
+    else setCurrentMonth(`${sM} ${sY} / ${eM} ${eY}`);
+  }, 80);
 
-  const [currentMonth, setCurrentMonth] = useState(() => getMonthLabel(0));
-  const debouncedSetMonth = useDebounced(
-    idx => setCurrentMonth(getMonthLabel(idx)),
-    80,
-  );
-  useEffect(() => {
-    setCurrentMonth(getMonthLabel(0));
-  }, [dates, getMonthLabel]);
+  useEffect(() => debouncedSetMonth(0), [dates, debouncedSetMonth]);
 
   const headerRef = useRef(null);
   const rowRefsRef = useRef({});
@@ -315,10 +295,8 @@ export default function AvailabilityScreen() {
     (x, sourceKey) => {
       if (syncingRef.current) return;
       syncingRef.current = true;
-
       const xr = Math.max(0, Math.round(x));
       scrollXRef.current = xr;
-
       const firstIndex = Math.max(0, Math.floor(xr / dayWidth));
       debouncedSetMonth(firstIndex);
 
@@ -329,95 +307,39 @@ export default function AvailabilityScreen() {
         if (key !== sourceKey && ref?.scrollTo)
           ref.scrollTo({ x: xr, animated: false });
       });
-
-      requestAnimationFrame(() => {
-        syncingRef.current = false;
-      });
+      requestAnimationFrame(() => (syncingRef.current = false));
     },
     [dayWidth, debouncedSetMonth],
   );
 
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const x = scrollXRef.current;
-      headerRef.current?.scrollTo?.({ x, animated: false });
-      Object.values(rowRefsRef.current).forEach(ref =>
-        ref?.scrollTo?.({ x, animated: false }),
-      );
-    });
-    return () => cancelAnimationFrame(id);
-  }, [contentWidth]);
-
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [reopenRid, setReopenRid] = useState(null);
-  const [resumeOnFocus, setResumeOnFocus] = useState(false);
+  const [selectedReservationId, setSelectedReservationId] = useState(null);
 
   const openCellModal = useCallback((propId, dateKey) => {
+    const reservations = byPropDate[propId]?.[dateKey] ?? [];
+    if (reservations.length) {
+      const firstRes = reservations[0];
+      setSelectedReservationId(normalizeId(firstRes?._id ?? firstRes?.id));
+    } else {
+      setSelectedReservationId(null);
+    }
     setSelectedCell({ propId, dateKey });
-    setReopenRid(null);
     setModalVisible(true);
-  }, []);
+  }, [byPropDate]);
 
   const closeModal = useCallback(() => {
     setModalVisible(false);
-    setReopenRid(null);
-    setResumeOnFocus(false);
+    setSelectedReservationId(null);
   }, []);
-
-  const cellReservations = useMemo(() => {
-    if (!selectedCell) return [];
-    const { propId, dateKey } = selectedCell;
-    return byPropDate[propId]?.[dateKey] ?? [];
-  }, [selectedCell, byPropDate]);
-
-  const getResId = useCallback(
-    r =>
-      normalizeId(
-        r?._id ??
-          r?.id ??
-          r?.reservation_id ??
-          r?.booking_id ??
-          r?.reference ??
-          r,
-      ),
-    [],
-  );
-
-  const cellReservationsOrdered = useMemo(() => {
-    if (!reopenRid) return cellReservations;
-    const arr = [...cellReservations];
-    const i = arr.findIndex(rr => String(getResId(rr)) === String(reopenRid));
-    if (i > 0) {
-      const [chosen] = arr.splice(i, 1);
-      arr.unshift(chosen);
-    }
-    return arr;
-  }, [cellReservations, reopenRid, getResId]);
 
   const handleCheckInPressFromModal = useCallback(
     reservationId => {
-      setReopenRid(String(reservationId));
-      setResumeOnFocus(true);
-      setModalVisible(false);
+      closeModal();
       navigation.navigate('GuestScreen', { reservationId });
     },
-    [navigation],
+    [navigation, closeModal],
   );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (resumeOnFocus) {
-        setModalVisible(true);
-        setResumeOnFocus(false);
-      }
-    }, [resumeOnFocus]),
-  );
-
-  const overallLoading =
-    propertiesLoading ||
-    reservationsLoading ||
-    (!propertyList.length && !reservationsError);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -437,6 +359,11 @@ export default function AvailabilityScreen() {
       setRefreshing(false);
     }
   }, [dispatch, fetchWindow, windowStartISO, windowEndISO]);
+
+  const overallLoading =
+    propertiesLoading ||
+    reservationsLoading ||
+    (!propertyList.length && !reservationsError);
 
   if (overallLoading) {
     return (
@@ -526,11 +453,6 @@ export default function AvailabilityScreen() {
         maxToRenderPerBatch={6}
         windowSize={7}
         removeClippedSubviews
-        getItemLayout={(_, index) => ({
-          length: 72 + 10 + 10,
-          offset: (72 + 20) * index,
-          index,
-        })}
         contentContainerStyle={{ paddingBottom: 16 }}
       />
 
@@ -550,12 +472,8 @@ export default function AvailabilityScreen() {
       {role === 'owner' ? null : (
         <ReservationDetailsModal
           visible={modalVisible}
-          isVisible={modalVisible}
-          open={modalVisible}
           onClose={closeModal}
-          onRequestClose={closeModal}
-          reservations={cellReservationsOrdered}
-          initialReservationId={reopenRid}
+          reservationId={selectedReservationId}
           onCheckInPress={handleCheckInPressFromModal}
         />
       )}

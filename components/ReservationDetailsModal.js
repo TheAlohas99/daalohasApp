@@ -7,11 +7,13 @@ import {
   ScrollView,
   Alert,
   BackHandler,
+  ActivityIndicator,
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 
 import ReservationNotes from './Reservation/ReservationNotes';
 import HeaderBar from './ReservationModals/HeaderBar';
@@ -21,8 +23,8 @@ import MoneyRow from './ReservationModals/MoneyRow';
 import SourceSection from './ReservationModals/SourceSection';
 import BookerCard from './ReservationModals/BookerCard';
 import ActionsRow from './ReservationModals/ActionsRow';
-
 import { s } from '../styles/ReservationModalsDetailsStyle';
+
 import {
   pick,
   diffNights,
@@ -31,6 +33,10 @@ import {
   num,
 } from '../utils/reservationModals';
 import { displayString } from '../utils/display';
+import {
+  fetchReservationById,
+  selectReservationObj,
+} from '../redux/slice/ReservationSlice';
 
 export default function ReservationDetailsModal({
   visible,
@@ -38,12 +44,12 @@ export default function ReservationDetailsModal({
   open,
   onClose,
   onRequestClose,
-  reservations = [],
+  reservationId,
   onCheckoutSuccess,
   reloadReservation,
-  initialReservationId,
   onCheckInPress,
 }) {
+  // ✅ Always initialize isOpen consistently
   const isOpen =
     typeof visible === 'boolean'
       ? visible
@@ -53,35 +59,32 @@ export default function ReservationDetailsModal({
       ? open
       : false;
 
-  const navigateToWhatsapp = useNavigation();
   const insets = useSafeAreaInsets();
+  const dispatch = useDispatch();
+  const navigation = useNavigation();
 
-  const [resList, setResList] = useState(
-    Array.isArray(reservations) ? reservations : [],
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // ✅ Always call hooks unconditionally
+  const reservation = useSelector(state =>
+    reservationId ? selectReservationObj(state, reservationId) : null
   );
+  // console.log(reservation)
 
+  // ✅ Fetch reservation safely (no conditional hook execution)
   useEffect(() => {
-    setResList(Array.isArray(reservations) ? reservations : []);
-  }, [reservations]);
+    if (isOpen && reservationId) {
+      setLoading(true);
+      dispatch(fetchReservationById({ reservationId }))
+        .unwrap()
+        .catch(err => console.warn('Reservation fetch failed:', err))
+        .finally(() => setLoading(false));
+    }
+  }, [dispatch, isOpen, reservationId]);
 
-  const [idx, setIdx] = useState(0);
-  useEffect(() => setIdx(0), [resList?.length]);
-
-  useEffect(() => {
-    if (!initialReservationId || !Array.isArray(resList)) return;
-    const i = resList.findIndex(
-      r =>
-        displayString(pick.reference(r)) ===
-        displayString(initialReservationId),
-    );
-    if (i >= 0) setIdx(i);
-  }, [initialReservationId, resList]);
-
-  const handleClose = useCallback(() => {
-    if (typeof onClose === 'function') onClose();
-    if (typeof onRequestClose === 'function') onRequestClose();
-  }, [onClose, onRequestClose]);
-
+  // ✅ Handle Android back press only when modal open
   useEffect(() => {
     if (!isOpen) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -89,21 +92,28 @@ export default function ReservationDetailsModal({
       return true;
     });
     return () => sub.remove();
-  }, [isOpen, handleClose]);
+  }, [isOpen]);
 
-  const r = (Array.isArray(resList) ? resList : [])[idx] || {};
-  const ci = pick.checkIn(r);
-  const co = pick.checkOut(r);
+  const handleClose = useCallback(() => {
+    if (typeof onClose === 'function') onClose();
+    if (typeof onRequestClose === 'function') onRequestClose();
+  }, [onClose, onRequestClose]);
+
+  const onScroll = e => {
+    setScrolled((e?.nativeEvent?.contentOffset?.y ?? 0) > 2);
+  };
+
+  // ✅ Safely compute derived fields
+  const ci = reservation ? pick.checkIn(reservation) : null;
+  const co = reservation ? pick.checkOut(reservation) : null;
   const nights = diffNights(ci, co);
-  const currency = pick.currency(r);
-  const pendingAmount = num(pick.PendingAmount(r));
-  const paymentStatus = pick.paymentStatus(r);
-  const paidAmount = num(pick.paidAmount(r));
-  const total = num(pick.totalAmount(r));
-  const avg = total != null && nights > 0 ? total / nights : null;
+  const currency = reservation ? pick.currency(reservation) : '';
+  const pendingAmount = reservation ? num(pick.PendingAmount(reservation)) : 0;
+  const paymentStatus = reservation ? pick.paymentStatus(reservation) : '';
+  const paidAmount = reservation ? num(pick.paidAmount(reservation)) : 0;
+  const total = reservation ? num(pick.totalAmount(reservation)) : 0;
+  const avg = total && nights > 0 ? total / nights : null;
 
-  const [checkingOut, setCheckingOut] = useState(false);
-  const reservationId = displayString(pick.reservationId(r));
   const CHECKOUT_URL = `https://api.daalohas.com/api/v1/checkout`;
 
   const doCheckout = useCallback(async () => {
@@ -125,7 +135,7 @@ export default function ReservationDetailsModal({
             'Content-Type': 'application/json',
           },
           withCredentials: true,
-        },
+        }
       );
 
       if (!data?.success) throw new Error(data?.message || 'Checkout failed');
@@ -149,46 +159,30 @@ export default function ReservationDetailsModal({
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Yes, Check-Out', onPress: doCheckout },
-      ],
+      ]
     );
   }, [doCheckout]);
 
   const handleCheckInPress = useCallback(() => {
     if (typeof onCheckInPress === 'function') {
-      const rid = pick.reservationId(r);
-      onCheckInPress(rid);
+      onCheckInPress(reservationId);
     }
-  }, [onCheckInPress, r]);
-
-  const [scrolled, setScrolled] = useState(false);
-  const onScroll = e =>
-    setScrolled((e?.nativeEvent?.contentOffset?.y ?? 0) > 2);
+  }, [onCheckInPress, reservationId]);
 
   const handleNotesSaved = useCallback(
     async savedText => {
-      if (typeof savedText === 'string') {
-        setResList(list => {
-          const next = [...list];
-          if (next[idx]) next[idx] = { ...next[idx], notes: savedText };
-          return next;
-        });
-      }
       if (typeof reloadReservation === 'function' && reservationId) {
         try {
-          const fresh = await reloadReservation(reservationId);
-          if (fresh) {
-            setResList(list => {
-              const next = [...list];
-              if (next[idx]) next[idx] = fresh;
-              return next;
-            });
-          }
+          await reloadReservation(reservationId);
         } catch {}
       }
       Alert.alert('Saved', 'Notes updated successfully.');
     },
-    [idx, reloadReservation, reservationId],
+    [reloadReservation, reservationId]
   );
+
+  // ✅ Unified loading condition (prevents conditional hook mismatch)
+  const isLoading = loading || !reservation;
 
   return (
     <Modal
@@ -198,16 +192,9 @@ export default function ReservationDetailsModal({
       statusBarTranslucent
       onRequestClose={handleClose}
     >
-      {/* Backdrop container */}
       <View style={s.backdrop} pointerEvents="box-none">
-        {/* Tap outside to close (behind the sheet) */}
-        <Pressable
-          style={s.backdropPress}
-          onPress={handleClose}
-          android_ripple={null}
-        />
+        <Pressable style={s.backdropPress} onPress={handleClose} />
 
-        {/* Bottom sheet */}
         <View
           style={[
             s.sheet,
@@ -218,74 +205,88 @@ export default function ReservationDetailsModal({
             },
           ]}
         >
-          <HeaderBar
-            insetsTop={insets.top}
-            scrolled={scrolled}
-            title={displayString(pick.title(r) || 'Reservation')}
-            subtitle={displayString(pick.subtitle(r))}
-            idx={idx}
-            total={resList.length}
-            onClose={handleClose}
-            onPrev={() =>
-              setIdx(p => (p - 1 + resList.length) % resList.length)
-            }
-            onNext={() => setIdx(p => (p + 1) % resList.length)}
-          />
-
-          <ScrollView
-            style={s.scroll}
-            contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }}
-            onScroll={onScroll}
-            scrollEventThrottle={16}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={Platform.OS === 'ios' ? 'on-drag' : 'none'}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator
-          >
-            <KPIRow nights={nights} guests={pick.guests(r)} />
-            <CheckPanel ci={ci} co={co} />
-            <MoneyRow total={total} avg={avg} currency={currency} />
-
-            {(pick.channel(r) || pick.createdAt(r)) && (
-              <SourceSection
-                channel={pick.channel(r)}
-                createdAt={pick.createdAt(r)}
-                fmtTime={fmtTime}
+          {isLoading ? (
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <ActivityIndicator size="large" color="#0b486b" />
+            </View>
+          ) : (
+            <>
+              <HeaderBar
+                insetsTop={insets.top}
+                scrolled={scrolled}
+                title={displayString(pick.title(reservation) || 'Reservation')}
+                subtitle={displayString(pick.subtitle(reservation))}
+                onClose={handleClose}
               />
-            )}
 
-            <BookerCard
-              reservationId={reservationId}
-              name={pick.bookerName(r)}
-              pendingAmount={pendingAmount}
-              paidAmount={paidAmount}
-              paymentStatus={paymentStatus}
-              phone={pick.phone(r)}
-              email={pick.email(r)}
-              reference={pick.reference(r)}
-              status={pick.status(r)}
-              money={money}
-              displayString={displayString}
-              onWhatsappPress={() =>
-                navigateToWhatsapp.navigate('MessageTemplate', {
-                  phone: pick.phone(r),
-                  reservation: r,
-                })
-              }
-            />
+              <ScrollView
+                style={s.scroll}
+                contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }}
+                onScroll={onScroll}
+                scrollEventThrottle={16}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={
+                  Platform.OS === 'ios' ? 'on-drag' : 'none'
+                }
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+              >
+                <KPIRow nights={nights} guests={pick.guests(reservation)} />
+                <CheckPanel ci={ci} co={co} />
+                <MoneyRow total={total} avg={avg} currency={currency} />
 
-            <ReservationNotes
-              reservationId={reservationId}
-              initialNotes={typeof r?.notes === 'string' ? r.notes : ''}
-              onSaved={handleNotesSaved}
-            />
+                {(pick.channel(reservation) || pick.createdAt(reservation)) && (
+                  <SourceSection
+                    channel={pick.channel(reservation)}
+                    createdAt={pick.createdAt(reservation)}
+                    fmtTime={fmtTime}
+                  />
+                )}
 
-            <ActionsRow
-              onCheckIn={handleCheckInPress}
-              onCheckout={handleCheckoutPress}
-              checkingOut={checkingOut}
-            />
-          </ScrollView>
+                <BookerCard
+                  reservationId={reservationId}
+                  name={pick.bookerName(reservation)}
+                  pendingAmount={pendingAmount}
+                  paidAmount={paidAmount}
+                  paymentStatus={paymentStatus}
+                  phone={pick.phone(reservation)}
+                  email={pick.email(reservation)}
+                  reference={pick.reference(reservation)}
+                  status={pick.status(reservation)}
+                  money={money}
+                  displayString={displayString}
+                  onWhatsappPress={() =>
+                    navigation.navigate('MessageTemplate', {
+                      phone: pick.phone(reservation),
+                      reservation,
+                    })
+                  }
+                />
+
+                <ReservationNotes
+                  reservationId={reservationId}
+                  initialNotes={
+                    typeof reservation?.notes === 'string'
+                      ? reservation.notes
+                      : ''
+                  }
+                  onSaved={handleNotesSaved}
+                />
+
+                <ActionsRow
+                  onCheckIn={handleCheckInPress}
+                  onCheckout={handleCheckoutPress}
+                  checkingOut={checkingOut}
+                />
+              </ScrollView>
+            </>
+          )}
         </View>
       </View>
     </Modal>

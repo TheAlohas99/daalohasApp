@@ -1,10 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Pressable } from 'react-native';
 import SText from '../SText';
 import { s } from '../../styles/ReservationModalsDetailsStyle';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { useNavigation } from '@react-navigation/native';
-import { fetchReservationById, selectReservationObj } from '../../redux/slice/ReservationSlice';
+import {
+  fetchReservationById,
+  selectReservationObj,
+} from '../../redux/slice/ReservationSlice';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function BookerCard({
@@ -24,12 +27,31 @@ export default function BookerCard({
 }) {
   const navigation = useNavigation();
   const dispatch = useDispatch();
-  const reservation = useSelector(s => selectReservationObj(s, reservationId));
-  console.log(reservation);
-  const safeName = displayString(reservation?.booker_first_name || name);
-  const safePhone = displayString(reservation?.booker_mobile || phone);
-  const safeEmail = displayString(reservation?.booker_email || email);
 
+  // Always call hooks in fixed order — even if reservationId is null
+  const reservation = useSelector(s =>
+    reservationId ? selectReservationObj(s, reservationId) : null
+  );
+
+  // Fetch reservation only when we have an ID
+  useEffect(() => {
+    if (reservationId) {
+      dispatch(fetchReservationById({ reservationId }));
+    }
+  }, [dispatch, reservationId]);
+
+  // Safe derived values (never conditionally define hooks)
+  const safeName = displayString(reservation?.booker_first_name || name || '');
+  const LastName = displayString(reservation?.booker_last_name || '');
+  const safePhone = displayString(reservation?.booker_mobile || phone || '');
+  const safeEmail = displayString(reservation?.booker_email || email || '');
+
+  // Always call useMemo regardless of data
+  const totalServiceAmount = useMemo(() => {
+    const services = reservation?.service;
+    if (!Array.isArray(services)) return 0;
+    return services.reduce((sum, s) => sum + (Number(s?.price) || 0), 0);
+  }, [reservation?.service]);
 
   const goToUpdate = () => {
     navigation.navigate('UpdateBooker', {
@@ -37,10 +59,6 @@ export default function BookerCard({
       initial: { name: safeName, phone: safePhone, email: safeEmail },
     });
   };
-
-  useEffect(() => {
-    if (reservationId) dispatch(fetchReservationById({ reservationId }));
-  }, [dispatch, reservationId]);
 
   return (
     <View style={s.card}>
@@ -64,17 +82,27 @@ export default function BookerCard({
               justifyContent: 'space-between',
             }}
           >
-            {/* Name is clickable -> goes to update screen */}
+            {/* ✅ Updated Pressable to flex row */}
             <Pressable
               onPress={goToUpdate}
               hitSlop={8}
-              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
             >
               <SText style={s.bookerName}>{safeName}</SText>
+              {!!LastName && (
+                <SText style={[s.bookerName, { marginLeft: 6 }]}>
+                  {LastName}
+                </SText>
+              )}
             </Pressable>
 
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {/* Edit button -> also goes to update screen */}
               <Pressable
                 onPress={goToUpdate}
                 hitSlop={8}
@@ -89,7 +117,6 @@ export default function BookerCard({
                 <Icon name="edit" size={20} color="#fff" />
               </Pressable>
 
-              {/* WhatsApp */}
               <Pressable
                 onPress={onWhatsappPress}
                 disabled={!safePhone}
@@ -114,12 +141,19 @@ export default function BookerCard({
         <KV label="Reservation ID" value={displayString(reference)} />
       )}
 
-      {pendingAmount !== null && pendingAmount !== undefined && (
+      {pendingAmount != null && (
         <KV label="Pending Amount" value={money(pendingAmount, currency)} />
       )}
 
-      {paidAmount !== null && paidAmount !== undefined && (
+      {paidAmount != null && (
         <KV label="Paid Amount" value={money(paidAmount, currency)} />
+      )}
+
+      {totalServiceAmount > 0 && (
+        <KV
+          label="Total Service Amount"
+          value={money(totalServiceAmount, currency)}
+        />
       )}
 
       {!!safePhone && <KV label="Phone" value={safePhone} />}

@@ -14,6 +14,8 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   FlatList,
+  ScrollView,
+  RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
@@ -131,13 +133,12 @@ export default function ReservationsDashboardScreen() {
     error: reservationsError = null,
   } = useSelector(s => s.dashboardreservation || {}, shallowEqual);
 
-  // console.log(apiObj);
-
   const { properties } = useSelector(
     s => ({ properties: (s.property && s.property.data) || [] }),
     shallowEqual,
   );
 
+  // Load property data on mount
   useEffect(() => {
     (async () => {
       try {
@@ -175,18 +176,12 @@ export default function ReservationsDashboardScreen() {
     return ids.length ? ids.join(',') : undefined;
   }, [allowedPropertyIds]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     const start = dateKey;
     const end = dateKey;
     const propKey = propertyIdParam || 'all';
-    if (
-      lastFetchRef.current.date === start &&
-      lastFetchRef.current.propertyKey === propKey
-    )
-      return;
     lastFetchRef.current = { date: start, propertyKey: propKey };
-
-    dispatch(
+    await dispatch(
       fetchReservationsByDates({
         start,
         end,
@@ -198,6 +193,19 @@ export default function ReservationsDashboardScreen() {
   useEffect(() => {
     refresh();
   }, [refresh, dispatch]);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } catch (e) {
+      console.error('Refresh error:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const monthTitle = useMemo(() => {
     try {
@@ -230,15 +238,13 @@ export default function ReservationsDashboardScreen() {
 
     const arrivalsData = filteredByProp.filter(
       r =>
-        toYmd(
-          r.check_in_date || r.checkin_date || r.checkInDate || r.start_date,
-        ) === dateKey,
+        toYmd(r.check_in_date || r.checkin_date || r.checkInDate || r.start_date) ===
+        dateKey,
     );
     const departuresData = filteredByProp.filter(
       r =>
-        toYmd(
-          r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date,
-        ) === dateKey,
+        toYmd(r.check_out_date || r.checkout_date || r.checkOutDate || r.end_date) ===
+        dateKey,
     );
     const stayData = filteredByProp.filter(r => {
       const ci = toYmd(
@@ -362,12 +368,46 @@ export default function ReservationsDashboardScreen() {
           </Text>
         </View>
       ) : (
-        <>
+        <ScrollView
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          contentContainerStyle={{ paddingBottom: 80 }}
+        >
           {/* Big counters */}
           <View style={styles.countersRow}>
-            <Counter title="ARRIVALS" value={api?.arrivals?.count ?? 0} />
-            <Counter title="DEPARTURES" value={api?.departures?.count ?? 0} />
-            <Counter title="STAY" value={api?.stay?.count ?? 0} highlight />
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() =>
+                navigation.navigate('ArrivalsReservation', {
+                  date: api?.date || dateKey,
+                })
+              }
+            >
+              <Counter title="ARRIVALS" value={api?.arrivals?.count ?? 0} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() =>
+                navigation.navigate('DeparturesReservation', {
+                  date: api?.date || dateKey,
+                })
+              }
+            >
+              <Counter title="DEPARTURES" value={api?.departures?.count ?? 0} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() =>
+                navigation.navigate('StayReservation', {
+                  date: api?.date || dateKey,
+                })
+              }
+            >
+              <Counter title="STAY" value={api?.stay?.count ?? 0} highlight />
+            </TouchableOpacity>
           </View>
 
           {/* Days until chip */}
@@ -420,14 +460,13 @@ export default function ReservationsDashboardScreen() {
               </View>
             </View>
           </View>
-        </>
+        </ScrollView>
       )}
     </View>
   );
 }
 
 /* -------------------- Small components -------------------- */
-
 function Counter({ title, value, highlight }) {
   return (
     <View style={styles.counterBox}>

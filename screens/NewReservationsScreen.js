@@ -1,12 +1,11 @@
 // screens/NewReservationsScreen.js
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { useSelector, shallowEqual, useDispatch } from 'react-redux';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProperty } from '../redux/slice/PropertySlice';
-
 import ReservationCard from '../components/ReservationCard';
 
 const ymdLocal = d => {
@@ -17,22 +16,11 @@ const ymdLocal = d => {
   const day = String(x.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
-const toYmd = v => {
-  if (!v) return '';
-  if (typeof v === 'string') {
-    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (m) return m[1];
-    const t = new Date(v);
-    return isNaN(t) ? '' : ymdLocal(t);
-  }
-  return ymdLocal(v);
-};
+
 const keyFor = (item, index) =>
   String(item?._id ?? item?.id ?? item?.reservation_id ?? `row-${index}`);
 
-// Match your modal reference logic
 const refId = r =>
-  r?.reservation_id ??
   r?.reference ??
   r?._id ??
   r?.id ??
@@ -40,33 +28,26 @@ const refId = r =>
   r?.pnr ??
   null;
 
-/* -------------------- screen -------------------- */
 export default function NewReservationsScreen() {
   const route = useRoute();
   const dispatch = useDispatch();
-  const selectedDate = route.params?.date || ymdLocal(new Date());
+  const navigation = useNavigation();
 
-  const { role } = useSelector(
-    s => ({ role: s.property.role }),
+  const selectedDate = route.params?.date || ymdLocal(new Date());
+  const { role } = useSelector(s => ({ role: s.property.role }), shallowEqual);
+  const { data } = useSelector(
+    s => s.dashboardreservation || {},
     shallowEqual,
   );
 
-  const { data } = useSelector(s => s.dashboardreservation || {}, shallowEqual);
-
-  // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalInitialId, setModalInitialId] = useState(null);
+  const [selectedReservationId, setSelectedReservationId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // All new reservations already fetched on the dashboard
-  const listAll = useMemo(() => data?.newReservations?.data || [], [data]);
+  // Directly use the pre-filtered list returned from the backend
+  const list = useMemo(() => data?.newReservations?.data || [], [data]);
 
-  // Filter by selected date defensively (createdAt bucket)
-  const list = useMemo(() => {
-    return listAll.filter(r => {
-      const created = toYmd(r?.createdAt || r?.created_at || r?.created_on);
-      return created === selectedDate;
-    });
-  }, [listAll, selectedDate]);
+  const badgeCount = list.length;
 
   const headerDateLabel = (() => {
     const d = new Date(selectedDate);
@@ -77,24 +58,37 @@ export default function NewReservationsScreen() {
 
   const onCardPress = useCallback(item => {
     const id = refId(item);
-    setModalInitialId(id || null);
+    if (!id) return;
+    setSelectedReservationId(id);
     setModalOpen(true);
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const userJson = await AsyncStorage.getItem('user');
-        if (userJson) {
-          const user = JSON.parse(userJson);
-          const { email, mobile } = user;
-          dispatch(getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }));
-        }
-      } catch (error) {
-        console.error('Error loading user from storage:', error);
+  const fetchData = useCallback(async () => {
+    try {
+      const userJson = await AsyncStorage.getItem('user');
+      if (userJson) {
+        const user = JSON.parse(userJson);
+        const { email, mobile } = user;
+        dispatch(
+          getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }),
+        );
       }
-    })();
+    } catch (error) {
+      console.error('Error loading user from storage:', error);
+    }
   }, [dispatch]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
+
+  const showModal = role !== 'owner';
 
   return (
     <View style={styles.container}>
@@ -103,7 +97,7 @@ export default function NewReservationsScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={styles.title}>New</Text>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{list.length}</Text>
+            <Text style={styles.badgeText}>{badgeCount}</Text>
           </View>
         </View>
         <Text style={styles.subtitle}>{headerDateLabel}</Text>
@@ -120,26 +114,33 @@ export default function NewReservationsScreen() {
             No new reservations.
           </Text>
         }
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         renderItem={({ item }) => (
           <ReservationCard item={item} onPress={() => onCardPress(item)} />
         )}
       />
 
-      {/* Details modal */}
-      {role === 'owner' ? null : (
+      {/* ✅ Use reservationId instead of array */}
+      {showModal && selectedReservationId && (
         <ReservationDetailsModal
+          key={selectedReservationId}
           visible={modalOpen}
           onClose={() => setModalOpen(false)}
           onRequestClose={() => setModalOpen(false)}
-          reservations={list}
-          initialReservationId={modalInitialId}
+          reservationId={selectedReservationId}
+          onCheckInPress={reservationId => {
+            console.log('Check-in pressed for reservation ID:', reservationId);
+            setModalOpen(false);
+            navigation.navigate('GuestScreen', { reservationId });
+          }}
         />
       )}
     </View>
   );
 }
 
-/* -------------------- styles (screen-only) -------------------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   headerRow: {

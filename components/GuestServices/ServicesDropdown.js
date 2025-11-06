@@ -94,8 +94,6 @@ export default function ServicesDropdown({
     };
   }, []);
 
-  console.log('Available services:', services);
-  console.log('Selected services (value):', value);
 
 
   const filtered = useMemo(() => {

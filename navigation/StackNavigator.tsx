@@ -11,6 +11,10 @@ import MessageTemplate from '../screens/MessageTemplate';
 import NewReservationsScreen from '../screens/NewReservationsScreen';
 import CancelledReservationsScreen from '../screens/CancelledReservationsScreen';
 import UpdateBooker from '../screens/UpdateBooker';
+import ArrivalsScreen from '../screens/ArrivalsScreen';
+import StayScreen from "../screens/StayScreen"
+import DeparturesScreen from "../screens/DeparturesScreen"
+
 
 type StackNavigatorProps = {
   isLoggedIn: boolean;
@@ -77,6 +81,12 @@ export default function StackNavigator({
             name="CancelledReservations"
             component={CancelledReservationsScreen}
           />
+          <Stack.Screen name="ArrivalsReservation" component={ArrivalsScreen} />
+          <Stack.Screen
+            name="DeparturesReservation"
+            component={DeparturesScreen}
+          />
+          <Stack.Screen name="StayReservation" component={StayScreen} />
           <Stack.Screen name="UpdateBooker" component={UpdateBooker} />
         </>
       ) : (

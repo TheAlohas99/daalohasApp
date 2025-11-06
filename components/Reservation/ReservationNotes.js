@@ -39,7 +39,7 @@ export default function ReservationNotes({
   const saving = useSelector((s) => selectReservationSaving(s, reservationId));
   const fetchError = useSelector((s) => selectReservationFetchError(s, reservationId));
   const saveError = useSelector((s) => selectReservationSaveError(s, reservationId));
-  console.log(fetching)
+  // console.log(fetching)
 
   // Local edit state
   const [notes, setNotes] = useState(initialNotes || '');

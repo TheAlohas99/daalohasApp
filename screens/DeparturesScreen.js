@@ -1,8 +1,14 @@
-// screens/CancelledReservationsScreen.js
+// screens/DeparturesScreen.js
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+} from 'react-native';
 import { useSelector, shallowEqual, useDispatch } from 'react-redux';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProperty } from '../redux/slice/PropertySlice';
@@ -20,33 +26,20 @@ const ymdLocal = d => {
 const keyFor = (item, index) =>
   String(item?._id ?? item?.id ?? item?.reservation_id ?? `row-${index}`);
 
-const refId = r => {
-  const cand =
-    r?.reference ??
-    r?.reference_id ??
-    r?.referenceNo ??
-    r?.reference_no ??
-    r?.booking_id ??
-    r?.pnr ??
-    r?.id ??
-    r?._id;
+const refId = r =>
+  r?.reference ??
+  r?._id ??
+  r?.id ??
+  r?.booking_id ??
+  r?.pnr ??
+  null;
 
-  if (cand == null) return null;
-
-  if (typeof cand === 'object') {
-    if (cand.$oid) return String(cand.$oid);
-    if (cand.$numberInt) return String(cand.$numberInt);
-    if (cand.$numberDouble) return String(cand.$numberDouble);
-  }
-  return String(cand);
-};
-
-export default function CancelledReservationsScreen() {
+export default function DeparturesScreen() {
   const route = useRoute();
   const dispatch = useDispatch();
   const navigation = useNavigation();
-
   const selectedDate = route.params?.date || ymdLocal(new Date());
+
   const { role } = useSelector(
     s => ({ role: s.property.role }),
     shallowEqual,
@@ -58,8 +51,8 @@ export default function CancelledReservationsScreen() {
   const [selectedReservationId, setSelectedReservationId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Use backend-filtered list directly
-  const list = useMemo(() => data?.cancelled?.data || [], [data]);
+  // Use API-provided departure data directly
+  const list = useMemo(() => data?.departures?.data || [], [data]);
 
   const headerDateLabel = (() => {
     const d = new Date(selectedDate);
@@ -81,9 +74,7 @@ export default function CancelledReservationsScreen() {
       if (userJson) {
         const user = JSON.parse(userJson);
         const { email, mobile } = user;
-        dispatch(
-          getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }),
-        );
+        dispatch(getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }));
       }
     } catch (error) {
       console.error('Error loading user from storage:', error);
@@ -107,7 +98,7 @@ export default function CancelledReservationsScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.title}>Cancelled</Text>
+          <Text style={styles.title}>Departures</Text>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{list.length}</Text>
           </View>
@@ -123,7 +114,7 @@ export default function CancelledReservationsScreen() {
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={
           <Text style={{ color: '#6b7a87', paddingHorizontal: 4 }}>
-            No cancellations.
+            No departures for this date.
           </Text>
         }
         refreshControl={
@@ -134,7 +125,7 @@ export default function CancelledReservationsScreen() {
         )}
       />
 
-      {/* ✅ Modal using only reservationId */}
+      {/* ✅ Modal now uses reservationId directly */}
       {showModal && selectedReservationId && (
         <ReservationDetailsModal
           key={selectedReservationId}
@@ -146,13 +137,6 @@ export default function CancelledReservationsScreen() {
             console.log('Check-in pressed for reservation ID:', reservationId);
             setModalOpen(false);
             navigation.navigate('GuestScreen', { reservationId });
-          }}
-          onCheckoutSuccess={updatedReservation => {
-            console.log('Checkout success:', updatedReservation);
-          }}
-          reloadReservation={async reservationId => {
-            console.log('Reloading reservation...', reservationId);
-            return null;
           }}
         />
       )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ScrollView,
   Alert,
   Pressable,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
@@ -31,6 +32,7 @@ const normalizeId = v => {
 export default function ReportScreen() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
   const [role, setRole] = useState('');
@@ -71,39 +73,45 @@ export default function ReportScreen() {
   }, [allowedPropertyIds]);
 
   // Fetch Reports
-  useEffect(() => {
-    const fetchReports = async () => {
-      try {
-        const token = await AsyncStorage.getItem('token');
-        const userJson = await AsyncStorage.getItem('user');
-        const user = JSON.parse(userJson);
-        setRole(user?.role || '');
+  const fetchReports = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const userJson = await AsyncStorage.getItem('user');
+      const user = JSON.parse(userJson);
+      setRole(user?.role || '');
 
-        if (!token) throw new Error('No token found, please log in again');
+      if (!token) throw new Error('No token found, please log in again');
 
-        const response = await fetch(
-          `https://api.daalohas.com/api/v1/total/reports?propertyId=${propertyIdParam}`,
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
+      const response = await fetch(
+        `https://api.daalohas.com/api/v1/total/reports?propertyId=${propertyIdParam}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
           },
-        );
+        },
+      );
 
-        const data = await response.json();
-        const allReports = data.allReports || data.data || [];
-        setReports(allReports);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchReports();
+      const data = await response.json();
+      const allReports = data.allReports || data.data || [];
+      setReports(allReports);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [propertyIdParam]);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchReports();
+  };
 
   // Update Report Status
   const handleUpdateReport = async (id, newStatus) => {
@@ -161,7 +169,6 @@ export default function ReportScreen() {
       </View>
     );
 
-  // Status Counts
   const pendingCount = reports.filter(r => r.status === 'Pending').length;
   const acceptedCount = reports.filter(r => r.status === 'Accepted').length;
   const resolvedCount = reports.filter(r => r.status === 'Resolved').length;
@@ -234,7 +241,6 @@ export default function ReportScreen() {
                 <TouchableOpacity
                   style={styles.buttonSmall}
                   onPress={() => {
-                    console.log('Opening modal for report:', item._id);
                     setSelectedReport({ ...item });
                   }}>
                   <Text style={styles.buttonText}>View</Text>
@@ -244,6 +250,14 @@ export default function ReportScreen() {
           );
         }}
         contentContainerStyle={{ padding: 16 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="tomato"
+            colors={['tomato']}
+          />
+        }
       />
 
       {/* Report Modal */}
@@ -356,16 +370,16 @@ const styles = StyleSheet.create({
     width: 90,
     paddingVertical: 2,
     paddingHorizontal: 3,
-    borderRadius: 10,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   summaryCount: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   summaryLabel: { marginRight: 4, fontSize: 13, color: '#fff' },
-  newTicketContainer: { padding: 10 },
+  newTicketContainer: { padding: 3 },
   newTicketButton: {
     backgroundColor: 'tomato',
-    paddingVertical: 10,
+    paddingVertical: 3,
     paddingHorizontal: 10,
     borderRadius: 6,
     alignItems: 'center',

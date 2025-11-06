@@ -1,8 +1,8 @@
-// screens/CancelledReservationsScreen.js
+// screens/StayScreen.js
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { useSelector, shallowEqual, useDispatch } from 'react-redux';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProperty } from '../redux/slice/PropertySlice';
@@ -41,25 +41,21 @@ const refId = r => {
   return String(cand);
 };
 
-export default function CancelledReservationsScreen() {
+export default function StayScreen() {
   const route = useRoute();
   const dispatch = useDispatch();
   const navigation = useNavigation();
 
   const selectedDate = route.params?.date || ymdLocal(new Date());
-  const { role } = useSelector(
-    s => ({ role: s.property.role }),
-    shallowEqual,
-  );
-
+  const { role } = useSelector(s => ({ role: s.property.role }), shallowEqual);
   const { data } = useSelector(s => s.dashboardreservation || {}, shallowEqual);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedReservationId, setSelectedReservationId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Use backend-filtered list directly
-  const list = useMemo(() => data?.cancelled?.data || [], [data]);
+  // Use API-provided stay list directly
+  const list = useMemo(() => data?.stay?.data || [], [data]);
 
   const headerDateLabel = (() => {
     const d = new Date(selectedDate);
@@ -107,7 +103,7 @@ export default function CancelledReservationsScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.title}>Cancelled</Text>
+          <Text style={styles.title}>Stay</Text>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{list.length}</Text>
           </View>
@@ -115,7 +111,7 @@ export default function CancelledReservationsScreen() {
         <Text style={styles.subtitle}>{headerDateLabel}</Text>
       </View>
 
-      {/* Scrollable list */}
+      {/* List */}
       <FlatList
         data={list}
         keyExtractor={keyFor}
@@ -123,7 +119,7 @@ export default function CancelledReservationsScreen() {
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={
           <Text style={{ color: '#6b7a87', paddingHorizontal: 4 }}>
-            No cancellations.
+            No guests staying on this date.
           </Text>
         }
         refreshControl={
@@ -134,7 +130,7 @@ export default function CancelledReservationsScreen() {
         )}
       />
 
-      {/* ✅ Modal using only reservationId */}
+      {/* ✅ Updated Modal */}
       {showModal && selectedReservationId && (
         <ReservationDetailsModal
           key={selectedReservationId}

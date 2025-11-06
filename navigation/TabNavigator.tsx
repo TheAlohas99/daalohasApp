@@ -34,6 +34,8 @@ export default function TabNavigator({ setIsLoggedIn }: TabNavProps) {
 
   if (role === null) return null;
 
+ 
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -66,11 +68,13 @@ export default function TabNavigator({ setIsLoggedIn }: TabNavProps) {
       <Tab.Screen name="Availability" component={AvailabilityScreen} />
 
       {/*  Added Report Screen Tab */}
-      <Tab.Screen
-        name="Reports"
-        component={ReportScreen}
-        options={{ headerShown: false }}
-      />
+      {/* {role === 'owner' ? null : ( */}
+        <Tab.Screen
+          name="Reports"
+          component={ReportScreen}
+          options={{ headerShown: false }}
+        />
+      {/* )} */}
 
       <Tab.Screen name="Profile">
         {props => <ProfileScreen {...props} setIsLoggedIn={setIsLoggedIn} />}
