@@ -8,13 +8,13 @@ import {
   Alert,
   BackHandler,
   ActivityIndicator,
+  Text,
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
-
 import ReservationNotes from './Reservation/ReservationNotes';
 import HeaderBar from './ReservationModals/HeaderBar';
 import KPIRow from './ReservationModals/KPIRow';
@@ -38,6 +38,16 @@ import {
   selectReservationObj,
 } from '../redux/slice/ReservationSlice';
 
+const formatCancelledDate = isoString => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  const day = d.getDate();
+  const month = d.toLocaleString('default', { month: 'short' }); // "Nov"
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  return `${day} ${month}, ${hours}:${minutes}`;
+};
+
 export default function ReservationDetailsModal({
   visible,
   isVisible,
@@ -49,7 +59,7 @@ export default function ReservationDetailsModal({
   reloadReservation,
   onCheckInPress,
 }) {
-  // ✅ Always initialize isOpen consistently
+  //  Always initialize isOpen consistently
   const isOpen =
     typeof visible === 'boolean'
       ? visible
@@ -67,13 +77,13 @@ export default function ReservationDetailsModal({
   const [scrolled, setScrolled] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // ✅ Always call hooks unconditionally
+  //  Always call hooks unconditionally
   const reservation = useSelector(state =>
-    reservationId ? selectReservationObj(state, reservationId) : null
+    reservationId ? selectReservationObj(state, reservationId) : null,
   );
-  // console.log(reservation)
+  // console.log(reservation && reservation);
 
-  // ✅ Fetch reservation safely (no conditional hook execution)
+  //  Fetch reservation safely (no conditional hook execution)
   useEffect(() => {
     if (isOpen && reservationId) {
       setLoading(true);
@@ -84,7 +94,7 @@ export default function ReservationDetailsModal({
     }
   }, [dispatch, isOpen, reservationId]);
 
-  // ✅ Handle Android back press only when modal open
+  //  Handle Android back press only when modal open
   useEffect(() => {
     if (!isOpen) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -103,7 +113,7 @@ export default function ReservationDetailsModal({
     setScrolled((e?.nativeEvent?.contentOffset?.y ?? 0) > 2);
   };
 
-  // ✅ Safely compute derived fields
+  //  Safely compute derived fields
   const ci = reservation ? pick.checkIn(reservation) : null;
   const co = reservation ? pick.checkOut(reservation) : null;
   const nights = diffNights(ci, co);
@@ -135,7 +145,7 @@ export default function ReservationDetailsModal({
             'Content-Type': 'application/json',
           },
           withCredentials: true,
-        }
+        },
       );
 
       if (!data?.success) throw new Error(data?.message || 'Checkout failed');
@@ -159,7 +169,7 @@ export default function ReservationDetailsModal({
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Yes, Check-Out', onPress: doCheckout },
-      ]
+      ],
     );
   }, [doCheckout]);
 
@@ -176,9 +186,9 @@ export default function ReservationDetailsModal({
           await reloadReservation(reservationId);
         } catch {}
       }
-      Alert.alert('Saved', 'Notes updated successfully.');
+      // Alert.alert('Saved', 'Notes updated successfully.');
     },
-    [reloadReservation, reservationId]
+    [reloadReservation, reservationId],
   );
 
   // ✅ Unified loading condition (prevents conditional hook mismatch)
@@ -231,14 +241,22 @@ export default function ReservationDetailsModal({
                 onScroll={onScroll}
                 scrollEventThrottle={16}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode={
-                  Platform.OS === 'ios' ? 'on-drag' : 'none'
-                }
+                keyboardDismissMode={Platform.OS === 'ios' ? 'on-drag' : 'none'}
                 nestedScrollEnabled
                 showsVerticalScrollIndicator
               >
                 <KPIRow nights={nights} guests={pick.guests(reservation)} />
                 <CheckPanel ci={ci} co={co} />
+                {reservation &&
+                reservation.reservation_status === 'CANCELLED' ? (
+                  <View style={s.cancelledContainer}>
+                    <Text style={s.cancelledText}>
+                      Reservation cancelled at{' '}
+                      {formatCancelledDate(reservation.updatedAt)}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <MoneyRow total={total} avg={avg} currency={currency} />
 
                 {(pick.channel(reservation) || pick.createdAt(reservation)) && (

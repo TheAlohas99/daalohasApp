@@ -1,5 +1,5 @@
 // src/components/MultiPropertyPicker.js
-import React, { useMemo, useState, memo } from 'react';
+import React, { useMemo, useState, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { displayString } from '../utils/display';
 
 function MultiPropertyPicker({
@@ -26,93 +27,102 @@ function MultiPropertyPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [loaded, setLoaded] = useState(false);
 
-  // Normalize -> get display label for an item
+  //-------------------------------------------
+  // 1️⃣ LOAD FROM ASYNC STORAGE (ONLY ONCE)
+  //-------------------------------------------
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem('multiPropertySelectedIds');
+        if (saved) {
+          onChange(JSON.parse(saved)); // apply saved selection
+        }
+      } catch (e) {
+        console.warn('Failed to load saved properties', e);
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  //-------------------------------------------
+  // 2️⃣ DO NOT SAVE ANYTHING HERE ANYMORE
+  //    (Removed second useEffect)
+  //-------------------------------------------
+
   const getLabel = (it) =>
     displayString(it.title ?? it.name ?? it.internal_name ?? it.property_title);
 
-  // All item ids (normalized)
-  const allIds = useMemo(
-    () => items.map((it) => getId(it)).filter(Boolean),
-    [items, getId]
-  );
-
-  // Trigger label
   const label = useMemo(() => {
-    if (!Array.isArray(selectedIds) || selectedIds.length === 0) return noneLabel;
+    if (selectedIds.length === 0) return noneLabel;
     if (selectedIds.length === 1) {
       const p = items.find((it) => getId(it) === selectedIds[0]);
       return p ? getLabel(p) : '1 selected';
     }
     return `${selectedIds.length} selected`;
-  }, [selectedIds, items, getId, noneLabel]);
+  }, [selectedIds, items]);
 
-  // Filtered items based on search query
   const filteredItems = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
     return items.filter((it) => getLabel(it).toLowerCase().includes(q));
   }, [items, query]);
 
-  // Selected items appear on top (within filtered set), stable within groups
   const sortedItems = useMemo(() => {
-    const selectedSet = new Set(selectedIds || []);
+    const selectedSet = new Set(selectedIds);
     const indexMap = new Map(filteredItems.map((it, i) => [getId(it), i]));
+
     const arr = [...filteredItems];
     arr.sort((a, b) => {
       const aId = getId(a);
       const bId = getId(b);
       const aSel = selectedSet.has(aId);
       const bSel = selectedSet.has(bId);
-      if (aSel !== bSel) return aSel ? -1 : 1; // selected first
-      const ia = indexMap.get(aId) ?? 0;
-      const ib = indexMap.get(bId) ?? 0;
-      return ia - ib; // original filtered order inside each group
+
+      if (aSel !== bSel) return aSel ? -1 : 1;
+
+      return indexMap.get(aId) - indexMap.get(bId);
     });
     return arr;
-  }, [filteredItems, selectedIds, getId]);
+  }, [filteredItems, selectedIds]);
 
-  // Visible IDs (after filtering)
-  const visibleIds = useMemo(
-    () => sortedItems.map((it) => getId(it)).filter(Boolean),
-    [sortedItems, getId]
-  );
-
-  // Whether all visible are selected
+  const visibleIds = sortedItems.map((it) => getId(it));
   const allVisibleSelected =
     visibleIds.length > 0 &&
-    visibleIds.every((id) => (selectedIds || []).includes(id));
+    visibleIds.every((id) => selectedIds.includes(id));
 
-  // Toggle a single id
-  const toggle = (id) => {
-    if (!id) return;
-    const cur = new Set(selectedIds || []);
-    cur.has(id) ? cur.delete(id) : cur.add(id);
-    onChange(Array.from(cur));
-    if (autoCloseOnSelect) setOpen(false);
+  const toggleAll = () => {
+    if (allVisibleSelected) {
+      onChange(selectedIds.filter((id) => !visibleIds.includes(id)));
+    } else {
+      const newSet = new Set(selectedIds);
+      visibleIds.forEach((id) => newSet.add(id));
+      onChange([...newSet]);
+    }
   };
 
-  // Header toggle: Select/Clear all (scopes to visible list if searching)
-  const allToggleLabel = allVisibleSelected ? 'Clear all' : 'Select all';
-  const onPressAllToggle = () => {
-    if (allVisibleSelected) {
-      // remove all visible from selection
-      const next = (selectedIds || []).filter((id) => !visibleIds.includes(id));
-      onChange(next);
-    } else {
-      // add all visible to selection (union)
-      const cur = new Set(selectedIds || []);
-      for (const id of visibleIds) cur.add(id);
-      onChange(Array.from(cur));
-    }
+  const toggle = (id) => {
+    const cur = new Set(selectedIds);
+    cur.has(id) ? cur.delete(id) : cur.add(id);
+    onChange([...cur]);
+
+    if (autoCloseOnSelect) setOpen(false);
   };
 
   const renderRow = ({ item }) => {
     const id = getId(item);
     if (!id) return null;
-    const checked = (selectedIds || []).includes(id);
+
+    const checked = selectedIds.includes(id);
+
     return (
-      <TouchableOpacity style={s.row} activeOpacity={0.8} onPress={() => toggle(id)}>
+      <TouchableOpacity
+        style={s.row}
+        onPress={() => toggle(id)}
+        activeOpacity={0.8}
+      >
         <Icon
           name={checked ? 'checkbox-marked' : 'checkbox-blank-outline'}
           size={22}
@@ -127,36 +137,42 @@ function MultiPropertyPicker({
     <View style={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 2 }}>
       <TouchableOpacity
         style={s.trigger}
-        activeOpacity={0.8}
         onPress={() => {
           setOpen(true);
-          setQuery(''); // reset search each open (optional)
+          setQuery('');
         }}
+        activeOpacity={0.8}
       >
         <Icon name="home-city" size={18} color="#0b486b" />
         <Text style={s.triggerText}>{'  '}{label}</Text>
         <Icon name="chevron-down" size={20} color="#0b486b" style={{ marginLeft: 'auto' }} />
       </TouchableOpacity>
 
-      <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
-        {/* Root container so backdrop and sheet are siblings */}
+      {/* MODAL */}
+      <Modal visible={open} transparent animationType="fade">
         <View style={s.modalRoot}>
-          {/* Backdrop */}
           <Pressable style={s.backdrop} onPress={() => setOpen(false)} />
 
-          {/* Sheet */}
           <View style={s.sheet}>
-            {/* Title + Select/Clear all */}
+            {/* HEADER */}
             <View style={s.sheetHeader}>
               <Text style={s.sheetTitle}>{title}</Text>
-              <TouchableOpacity onPress={onPressAllToggle} disabled={visibleIds.length === 0}>
-                <Text style={[s.selectAll, visibleIds.length === 0 && { opacity: 0.4 }]}>
-                  {allToggleLabel}
+              <TouchableOpacity
+                onPress={toggleAll}
+                disabled={visibleIds.length === 0}
+              >
+                <Text
+                  style={[
+                    s.selectAll,
+                    visibleIds.length === 0 && { opacity: 0.4 },
+                  ]}
+                >
+                  {allVisibleSelected ? 'Clear all' : 'Select all'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Search box */}
+            {/* SEARCH */}
             <View style={s.searchWrap}>
               <Icon name="magnify" size={18} color="#5f7686" />
               <TextInput
@@ -167,7 +183,6 @@ function MultiPropertyPicker({
                 style={s.searchInput}
                 autoCorrect={false}
                 autoCapitalize="none"
-                clearButtonMode="while-editing"
               />
               {query.length > 0 && (
                 <TouchableOpacity onPress={() => setQuery('')}>
@@ -176,7 +191,7 @@ function MultiPropertyPicker({
               )}
             </View>
 
-            {/* List */}
+            {/* LIST */}
             {sortedItems.length === 0 ? (
               <View style={s.emptyState}>
                 <Icon name="text-search" size={24} color="#9fb2bd" />
@@ -185,19 +200,42 @@ function MultiPropertyPicker({
             ) : (
               <FlatList
                 data={sortedItems}
+                renderItem={renderRow}
                 keyExtractor={(it) => String(getId(it))}
                 ItemSeparatorComponent={() => (
                   <View
-                    style={{ height: StyleSheet.hairlineWidth, backgroundColor: '#e7eef3' }}
+                    style={{
+                      height: StyleSheet.hairlineWidth,
+                      backgroundColor: '#e7eef3',
+                    }}
                   />
                 )}
-                renderItem={renderRow}
                 keyboardShouldPersistTaps="handled"
               />
             )}
 
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
-              <TouchableOpacity onPress={() => setOpen(false)} style={s.doneBtn}>
+            {/* DONE BUTTON (ONLY SAVE HERE) */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+                marginTop: 10,
+              }}
+            >
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    await AsyncStorage.setItem(
+                      'multiPropertySelectedIds',
+                      JSON.stringify(selectedIds)
+                    );
+                  } catch (e) {
+                    console.warn('Failed to save', e);
+                  }
+                  setOpen(false);
+                }}
+                style={s.doneBtn}
+              >
                 <Text style={s.doneText}>{confirmLabel}</Text>
               </TouchableOpacity>
             </View>
@@ -223,7 +261,6 @@ const s = StyleSheet.create({
   },
   triggerText: { color: '#0b486b', fontWeight: '800' },
 
-  // Modal layout
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)' },
 
@@ -250,26 +287,17 @@ const s = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 8,
   },
-  searchInput: {
-    flex: 1,
-    color: '#17364a',
-    paddingVertical: 0,
-    fontWeight: '600',
-  },
+  searchInput: { flex: 1, color: '#17364a', fontWeight: '600', paddingVertical: 0 },
 
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   rowText: { marginLeft: 10, color: '#17364a', fontWeight: '700', flex: 1 },
 
-  emptyState: {
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 24,
-  },
+  emptyState: { alignItems: 'center', paddingVertical: 24, gap: 6 },
   emptyText: { color: '#7f97a6', fontWeight: '700' },
 
   doneBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#0b86d0',
   },

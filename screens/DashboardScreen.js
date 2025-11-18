@@ -22,10 +22,12 @@ import { useDispatch, useSelector, shallowEqual } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 
+import MultiPropertyPicker from '../components/MultiPropertyPicker';   // ✅ NEW
+
 import { fetchReservationsByDates } from '../redux/slice/DashboardReservationSlice';
 import { getProperty } from '../redux/slice/PropertySlice';
 
-/* -------------------- Utilities -------------------- */
+/* ------------------------------------ Utilities ------------------------------------ */
 const displayString = v => {
   if (v == null) return '';
   if (typeof v === 'string' || typeof v === 'number') return String(v);
@@ -119,7 +121,7 @@ const getResPropertyId = r =>
   r?.property ??
   '';
 
-/* -------------------- Screen -------------------- */
+/* ------------------------------------ Screen ------------------------------------ */
 
 export default function ReservationsDashboardScreen() {
   const navigation = useNavigation();
@@ -138,6 +140,13 @@ export default function ReservationsDashboardScreen() {
     shallowEqual,
   );
 
+  /*  NEW: Multi-property state */
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState([]); 
+  const getId = p => normalizeId(p?._id ?? p?.id ?? p);               
+
+  console.log(selectedPropertyIds)
+
+  // console.log(apiObj)
   // Load property data on mount
   useEffect(() => {
     (async () => {
@@ -172,27 +181,33 @@ export default function ReservationsDashboardScreen() {
   const lastFetchRef = useRef({ date: null, propertyKey: null });
 
   const propertyIdParam = useMemo(() => {
-    const ids = [...allowedPropertyIds].filter(Boolean);
-    return ids.length ? ids.join(',') : undefined;
-  }, [allowedPropertyIds]);
+    const ids =
+      selectedPropertyIds.length > 0
+        ? selectedPropertyIds
+        : [...allowedPropertyIds];
+
+    const validIds = ids.filter(Boolean);
+    return validIds.length ? validIds.join(',') : 'all';
+  }, [selectedPropertyIds, allowedPropertyIds]);
 
   const refresh = useCallback(async () => {
     const start = dateKey;
     const end = dateKey;
-    const propKey = propertyIdParam || 'all';
-    lastFetchRef.current = { date: start, propertyKey: propKey };
+
+    lastFetchRef.current = { date: start, propertyKey: propertyIdParam };
+
     await dispatch(
       fetchReservationsByDates({
         start,
         end,
-        propertyId: propertyIdParam || 'all',
+        propertyId: propertyIdParam,
       }),
     );
   }, [dispatch, dateKey, propertyIdParam]);
 
   useEffect(() => {
     refresh();
-  }, [refresh, dispatch]);
+  }, [refresh]);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -224,17 +239,14 @@ export default function ReservationsDashboardScreen() {
     return arr;
   }, [selectedDate]);
 
-  /* ------------ DATA (API or fallback) ------------ */
   const api = useMemo(() => {
     if (apiObj && apiObj.success) return apiObj;
 
     const list = Array.isArray(reservationsArray) ? reservationsArray : [];
-    const filteredByProp = allowedPropertyIds.size
-      ? list.filter(r => {
-          const pid = normalizeId(getResPropertyId(r));
-          return pid && allowedPropertyIds.has(pid);
-        })
-      : list;
+    const filteredByProp = list.filter(r => {
+      const pid = normalizeId(getResPropertyId(r));
+      return pid && (selectedPropertyIds.length === 0 || selectedPropertyIds.includes(pid));
+    });
 
     const arrivalsData = filteredByProp.filter(
       r =>
@@ -294,7 +306,12 @@ export default function ReservationsDashboardScreen() {
           ).toUpperCase() !== 'CANCELLED',
       ).length,
     };
-  }, [apiObj, reservationsArray, allowedPropertyIds, dateKey]);
+  }, [
+    apiObj,
+    reservationsArray,
+    selectedPropertyIds,
+    dateKey,
+  ]);
 
   const newAmount = useMemo(
     () =>
@@ -308,10 +325,24 @@ export default function ReservationsDashboardScreen() {
 
   const overallLoading = reservationsLoading;
 
-  /* -------------------- UI -------------------- */
 
   return (
     <View style={styles.container}>
+      
+      {/* ✅ NEW: MULTI PROPERTY PICKER */}
+      <View style={{ paddingHorizontal: 12, paddingTop: 10 }}>
+        <MultiPropertyPicker
+          items={properties}
+          selectedIds={selectedPropertyIds}
+          onChange={setSelectedPropertyIds}
+          getId={getId}
+          noneLabel="All properties"
+          title="Filter by property"
+          confirmLabel="Apply"
+          searchPlaceholder="Search property…"
+        />
+      </View>
+
       {/* Month header */}
       <View style={styles.monthHeader}>
         <TouchableOpacity
@@ -466,7 +497,7 @@ export default function ReservationsDashboardScreen() {
   );
 }
 
-/* -------------------- Small components -------------------- */
+/* ------------------------------------ Small components ------------------------------------ */
 function Counter({ title, value, highlight }) {
   return (
     <View style={styles.counterBox}>
@@ -509,7 +540,7 @@ function RowItem({ label, count, amount, onPress }) {
   );
 }
 
-/* -------------------- Styles -------------------- */
+/* ------------------------------------ Styles ------------------------------------ */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   monthHeader: {
@@ -608,3 +639,4 @@ const styles = StyleSheet.create({
   },
   ringPct: { fontWeight: '900', color: '#17364a' },
 });
+

@@ -87,7 +87,7 @@ export const fetchReservationById = createAsyncThunk(
         reservationId: id,
         notes,
         reservation: reservationObj,
-        raw: data,
+        // raw: data,
       };
     } catch (error) {
       return rejectWithValue(
@@ -177,7 +177,7 @@ export const updateReservationNotes = createAsyncThunk(
         reservationId: id,
         notes: savedNotes,
         reservation: reservationObj,
-        raw: data,
+        // raw: data,
       };
     } catch (error) {
       return rejectWithValue(
@@ -255,7 +255,7 @@ const reservationSlice = createSlice({
           _id: id,
           ...reservation, // store the full object
           notes: typeof notes === 'string' ? notes : notes ?? '',
-          __raw: raw,
+          // __raw: raw,
         };
       })
       .addCase(fetchReservationById.rejected, (state, action) => {
@@ -287,7 +287,7 @@ const reservationSlice = createSlice({
           _id: id,
           ...reservation, // keep latest fields
           notes: typeof notes === 'string' ? notes : notes ?? '',
-          __raw: raw,
+          // __raw: raw,
         };
       })
       .addCase(updateReservationNotes.rejected, (state, action) => {

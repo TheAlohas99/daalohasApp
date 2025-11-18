@@ -13,8 +13,8 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import SText from '../components/SText'; // Assuming SText is a custom Text component
-import ServicesDropdown from '../components/GuestServices/ServicesDropdown'; // UPDATED PATH
+import SText from '../components/SText';
+import ServicesDropdown from '../components/GuestServices/ServicesDropdown'; 
 import {
   fetchReservationById,
   selectReservationObj,

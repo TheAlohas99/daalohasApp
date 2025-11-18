@@ -99,7 +99,7 @@ export const pick = {
   guests: r => {
     const direct = toInt(
       r?.guests_count ?? r?.no_of_guests ?? r?.num_guests ?? r?.total_guests,
-    );
+    ) || 0;
     if (direct > 0) return direct;
 
     const adults = toInt(r?.adults ?? r?.adult_count ?? r?.adults_count);

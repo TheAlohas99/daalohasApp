@@ -30,11 +30,11 @@ export default function SixMonthSummaryTable({ data, selectedMonth, onSelectMont
         </View>
     );
 
-    console.log(data)
+    // console.log(data)
 
     const renderItem = ({ item }) => {
         const isSelected = selectedMonth?.monthLabel === item.monthLabel;
-        console.log(item)
+        // console.log(item)
 
         return (
             <TouchableOpacity

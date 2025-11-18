@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import {
   View,
   Text,
@@ -12,11 +18,17 @@ import {
   Alert,
   Pressable,
   RefreshControl,
+  BackHandler,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
 import { getProperty } from '../redux/slice/PropertySlice';
 import { shallowEqual, useDispatch, useSelector } from 'react-redux';
+import { getDueStatus } from '../utils/display';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const normalizeId = v => {
   if (v == null) return '';
@@ -38,6 +50,8 @@ export default function ReportScreen() {
   const [role, setRole] = useState('');
   const [showWebView, setShowWebView] = useState(false);
   const dispatch = useDispatch();
+  const webviewRef = useRef(null);
+  const canGoBackRef = useRef(false);
 
   const { properties } = useSelector(
     s => ({ properties: (s.property && s.property.data) || [] }),
@@ -108,6 +122,8 @@ export default function ReportScreen() {
     fetchReports();
   }, [fetchReports]);
 
+  console.log(reports);
+
   const handleRefresh = () => {
     setRefreshing(true);
     fetchReports();
@@ -133,7 +149,10 @@ export default function ReportScreen() {
 
       const result = await response.json();
       if (response.ok) {
-        Alert.alert('Success', `Report has been ${newStatus.toLowerCase()} successfully!`);
+        Alert.alert(
+          'Success',
+          `Report has been ${newStatus.toLowerCase()} successfully!`,
+        );
         setSelectedReport(null);
         setReports(prev =>
           prev.map(r => (r._id === id ? { ...r, status: newStatus } : r)),
@@ -145,6 +164,33 @@ export default function ReportScreen() {
       Alert.alert('Error', err.message);
     }
   };
+
+  // ✅ Handle Android back button
+  useEffect(() => {
+    const backAction = () => {
+      if (showWebView) {
+        if (canGoBackRef.current && webviewRef.current) {
+          webviewRef.current.goBack(); // go back inside the webview
+        } else {
+          setShowWebView(false); // close modal
+        }
+        return true;
+      }
+
+      if (selectedReport) {
+        setSelectedReport(null);
+        return true;
+      }
+
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction,
+    );
+    return () => backHandler.remove();
+  }, [showWebView, selectedReport]);
 
   // Render States
   if (loading)
@@ -172,181 +218,291 @@ export default function ReportScreen() {
   const pendingCount = reports.filter(r => r.status === 'Pending').length;
   const acceptedCount = reports.filter(r => r.status === 'Accepted').length;
   const resolvedCount = reports.filter(r => r.status === 'Resolved').length;
+  const DirectGuest = reports.filter(r => r.isScan === true).length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f9f9f9' }}>
-      {/* Summary Bar */}
-      <View style={styles.summaryContainer}>
-        <View style={[styles.summaryBox, { backgroundColor: '#ff9800' }]}>
-          <Text style={styles.summaryLabel}>Pending</Text>
-          <Text style={styles.summaryCount}>{pendingCount}</Text>
+    <SafeAreaView
+      style={{
+        flex: 1,
+        backgroundColor: '#f9f9f9',
+        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+      }}
+    >
+      <View style={{ flex: 1, backgroundColor: '#f9f9f9' }}>
+        {/* Summary Bar */}
+        <View style={styles.summaryContainer}>
+          <View style={[styles.pill, { backgroundColor: '#FFEDD5' }]}>
+            <Text style={[styles.pillLabel, { color: '#D97706' }]}>
+              Pending
+            </Text>
+            <Text style={[styles.pillCount, { color: '#D97706' }]}>
+              {pendingCount}
+            </Text>
+          </View>
+
+          <View style={[styles.pill, { backgroundColor: '#E6F4EA' }]}>
+            <Text style={[styles.pillLabel, { color: '#1B873F' }]}>
+              Accepted
+            </Text>
+            <Text style={[styles.pillCount, { color: '#1B873F' }]}>
+              {acceptedCount}
+            </Text>
+          </View>
+
+          <View style={[styles.pill, { backgroundColor: '#E3F2FD' }]}>
+            <Text style={[styles.pillLabel, { color: '#1976D2' }]}>
+              Resolved
+            </Text>
+            <Text style={[styles.pillCount, { color: '#1976D2' }]}>
+              {resolvedCount}
+            </Text>
+          </View>
+
+          <View style={[styles.pill, { backgroundColor: '#F0F9FF' }]}>
+            <Text style={[styles.pillLabel, { color: '#0284C7' }]}>
+              Direct Guest
+            </Text>
+            <Text style={[styles.pillCount, { color: '#0284C7' }]}>
+              {DirectGuest}
+            </Text>
+          </View>
         </View>
 
-        <View style={[styles.summaryBox, { backgroundColor: '#4caf50' }]}>
-          <Text style={styles.summaryLabel}>Accepted</Text>
-          <Text style={styles.summaryCount}>{acceptedCount}</Text>
-        </View>
+        {/* Reports List */}
+        <FlatList
+          data={reports}
+          keyExtractor={item => item._id}
+          renderItem={({ item }) => {
+            const property = item.propertyId || {};
+            const { label: dueLabel, color: dueColor } = getDueStatus(
+              item.createdAt,
+            );
 
-        <View style={[styles.summaryBox, { backgroundColor: '#2196f3' }]}>
-          <Text style={styles.summaryLabel}>Resolved</Text>
-          <Text style={styles.summaryCount}>{resolvedCount}</Text>
-        </View>
-
-        <View style={styles.newTicketContainer}>
-          <TouchableOpacity
-            style={styles.newTicketButton}
-            onPress={() => setShowWebView(true)}>
-            <Text style={styles.newTicketText}>New</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Reports List */}
-      <FlatList
-        data={reports}
-        keyExtractor={item => item._id}
-        renderItem={({ item }) => {
-          const property = item.propertyId || {};
-          return (
-            <View style={styles.card}>
-              <View>
-                <Text style={styles.title}>{property.title}</Text>
-                <Text style={styles.text}>{item.location}</Text>
-              </View>
-
-              <View style={styles.rowBetween}>
+            return (
+              <View style={styles.card}>
                 <View>
-                  <Text style={styles.text}>
-                    Status:{' '}
-                    <Text
-                      style={{
-                        color:
-                          item.status === 'Pending'
-                            ? 'orange'
-                            : item.status === 'Accepted'
-                            ? 'green'
-                            : item.status === 'Resolved'
-                            ? 'blue'
-                            : '#555',
-                        fontWeight: '600',
-                      }}>
-                      {item.status || 'Pending'}
-                    </Text>
-                  </Text>
-                  <Text style={[styles.text, { fontSize: 12, color: '#515151ff' }]}>
-                    Ticket ID: {item?.ticketId}
-                  </Text>
+                  <View style={{ flexDirection: 'row' }}>
+                    <Text style={styles.title}>{property.title}</Text>
+                    {item.isScan === true && (
+                      <Icon
+                        name="check-circle"
+                        size={20}
+                        color="#1976D2"
+                        style={{ marginLeft: 5 }}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.text}>{item.location}</Text>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.buttonSmall}
-                  onPress={() => {
-                    setSelectedReport({ ...item });
-                  }}>
-                  <Text style={styles.buttonText}>View</Text>
-                </TouchableOpacity>
+                <View style={styles.rowBetween}>
+                  <View>
+                    {/* 👇 NEW: Due Status Line */}
+                    {item.status !== 'Resolved' && dueLabel ? (
+                      <Text
+                        style={[
+                          styles.text,
+                          { color: dueColor, fontWeight: '600' },
+                        ]}
+                      >
+                        {dueLabel}
+                      </Text>
+                    ) : null}
+                    {/* Existing Status Line */}
+                    <Text style={styles.text}>
+                      Status:{' '}
+                      <Text
+                        style={{
+                          color:
+                            item.status === 'Pending'
+                              ? 'orange'
+                              : item.status === 'Accepted'
+                              ? 'green'
+                              : item.status === 'Resolved'
+                              ? 'blue'
+                              : '#555',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {item.status || 'Pending'}
+                      </Text>
+                    </Text>
+                    <Text
+                      style={[
+                        styles.text,
+                        { fontSize: 12, color: '#515151ff' },
+                      ]}
+                    >
+                      Ticket ID: {item?.ticketId}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.text,
+                        { fontSize: 12, color: '#515151ff' },
+                      ]}
+                    >
+                      Open Date:
+                      {new Date(item?.createdAt).toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.buttonSmall}
+                    onPress={() => {
+                      setSelectedReport({ ...item });
+                    }}
+                  >
+                    <Text style={styles.buttonText}>View</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          );
-        }}
-        contentContainerStyle={{ padding: 16 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor="tomato"
-            colors={['tomato']}
-          />
-        }
-      />
+            );
+          }}
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="tomato"
+              colors={['tomato']}
+            />
+          }
+        />
 
-      {/* Report Modal */}
-      <Modal
-        visible={!!selectedReport}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setSelectedReport(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedReport(null)}>
-          <Pressable style={styles.modalBox} onPress={e => e.stopPropagation()}>
-            {selectedReport && (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>
-                  {selectedReport.propertyId?.title || 'Report Details'}
-                </Text>
-
-                {selectedReport.image?.url && (
-                  <Image source={{ uri: selectedReport.image.url }} style={styles.image} />
-                )}
-
-                <Text style={styles.text}>
-                  Category: {selectedReport.category?.name || 'N/A'}
-                </Text>
-                <Text style={styles.text}>
-                  Subcategory: {selectedReport.subcategory?.name || 'N/A'}
-                </Text>
-
-                <Text style={[styles.text, { marginTop: 10 }]}>
-                  {selectedReport.userId?.firstName} {selectedReport.userId?.lastName}
-                </Text>
-                <Text style={styles.text}>{selectedReport.userId?.mobile}</Text>
-                <Text style={styles.text}>{selectedReport.userId?.email}</Text>
-
-                <Text style={[styles.text, { marginTop: 10 }]}>
-                  Notes: {selectedReport.notes || 'No notes'}
-                </Text>
-
-                <Text style={styles.date}>
-                  Created: {new Date(selectedReport.createdAt).toLocaleString()}
-                </Text>
-
-                {(role === 'admin' || role === 'operation') && (
-                  <>
-                    {selectedReport.status === 'Pending' && (
-                      <TouchableOpacity
-                        style={[styles.button, { backgroundColor: 'green' }]}
-                        onPress={() =>
-                          handleUpdateReport(selectedReport._id, 'Accepted')
-                        }>
-                        <Text style={styles.buttonText}>Accept</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {selectedReport.status === 'Accepted' && (
-                      <TouchableOpacity
-                        style={[styles.button, { backgroundColor: 'blue' }]}
-                        onPress={() =>
-                          handleUpdateReport(selectedReport._id, 'Resolved')
-                        }>
-                        <Text style={styles.buttonText}>Mark as Resolved</Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
-                )}
-
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => setSelectedReport(null)}>
-                  <Text style={styles.closeButtonText}>Close</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* WebView Modal */}
-      <Modal visible={showWebView} animationType="slide">
-        <View style={{ flex: 1 }}>
-          <View style={styles.webviewHeader}>
-            <TouchableOpacity onPress={() => setShowWebView(false)}>
-              <Text style={styles.closeWebText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.webviewTitle}>New Ticket</Text>
-          </View>
-          <WebView source={{ uri: 'https://www.daalohas.com/reports' }} />
+        <View style={styles.floatingButtonContainer}>
+          <TouchableOpacity
+            style={styles.floatingButton}
+            onPress={() => setShowWebView(true)}
+          >
+            <Text style={styles.floatingButtonText}>New</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
-    </View>
+
+        {/* Report Modal */}
+        <Modal
+          visible={!!selectedReport}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setSelectedReport(null)}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setSelectedReport(null)}
+          >
+            <Pressable
+              style={styles.modalBox}
+              onPress={e => e.stopPropagation()}
+            >
+              {selectedReport && (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={styles.modalTitle}>
+                    {selectedReport.propertyId?.title || 'Report Details'}
+                  </Text>
+
+                  {selectedReport.image?.url && (
+                    <Image
+                      source={{ uri: selectedReport.image.url }}
+                      style={styles.image}
+                    />
+                  )}
+
+                  <Text style={styles.text}>
+                    Master category:{' '}
+                    {selectedReport.masterCategory?.name || 'N/A'}
+                  </Text>
+
+                  <Text style={styles.text}>
+                    Category: {selectedReport.category?.name || 'N/A'}
+                  </Text>
+                  <Text style={styles.text}>
+                    Subcategory: {selectedReport.subcategory?.name || 'N/A'}
+                  </Text>
+
+                  <Text style={[styles.text, { marginTop: 10 }]}>
+                    {selectedReport.userId?.firstName}{' '}
+                    {selectedReport.userId?.lastName}
+                  </Text>
+                  <Text style={styles.text}>
+                    {selectedReport.userId?.mobile}
+                  </Text>
+                  <Text style={styles.text}>
+                    {selectedReport.userId?.email}
+                  </Text>
+
+                  <Text style={[styles.text, { marginTop: 10 }]}>
+                    Notes: {selectedReport.notes || 'No notes'}
+                  </Text>
+
+                  <Text style={styles.date}>
+                    Created:{' '}
+                    {new Date(selectedReport.createdAt).toLocaleString()}
+                  </Text>
+
+                  {(role === 'admin' || role === 'operation') && (
+                    <>
+                      {selectedReport.status === 'Pending' && (
+                        <TouchableOpacity
+                          style={[styles.button, { backgroundColor: 'green' }]}
+                          onPress={() =>
+                            handleUpdateReport(selectedReport._id, 'Accepted')
+                          }
+                        >
+                          <Text style={styles.buttonText}>Accept</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {selectedReport.status === 'Accepted' && (
+                        <TouchableOpacity
+                          style={[styles.button, { backgroundColor: 'blue' }]}
+                          onPress={() =>
+                            handleUpdateReport(selectedReport._id, 'Resolved')
+                          }
+                        >
+                          <Text style={styles.buttonText}>
+                            Mark as Resolved
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => setSelectedReport(null)}
+                  >
+                    <Text style={styles.closeButtonText}>Close</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* ✅ WebView Modal (no extra back button) */}
+        <Modal
+          visible={showWebView}
+          animationType="slide"
+          onRequestClose={() => setShowWebView(false)}
+        >
+          <View style={{ flex: 1 }}>
+            <WebView
+              ref={webviewRef}
+              source={{ uri: 'https://www.daalohas.com/reports' }}
+              startInLoadingState
+              onNavigationStateChange={navState => {
+                canGoBackRef.current = navState.canGoBack;
+              }}
+              onError={() => Alert.alert('Error', 'Failed to load page')}
+            />
+          </View>
+        </Modal>
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -357,18 +513,32 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16, color: '#666' },
   summaryContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    padding: 10,
+  },
+
+  pill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderColor: '#ddd',
-    elevation: 3,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    gap: 4,
+  },
+
+  pillLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  pillCount: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   summaryBox: {
     flexDirection: 'row',
-    width: 90,
-    paddingVertical: 2,
+    width: 95,
+    paddingVertical: 4,
     paddingHorizontal: 3,
     borderRadius: 6,
     alignItems: 'center',
@@ -376,15 +546,32 @@ const styles = StyleSheet.create({
   },
   summaryCount: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   summaryLabel: { marginRight: 4, fontSize: 13, color: '#fff' },
-  newTicketContainer: { padding: 3 },
-  newTicketButton: {
-    backgroundColor: 'tomato',
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    alignItems: 'center',
+  floatingButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
   },
-  newTicketText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+
+  floatingButton: {
+    backgroundColor: '#2a6285ff',
+    width: 70,
+    height: 70,
+    borderRadius: 50,
+    elevation: 5,
+    shadowColor: '#080707ff',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  floatingButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
   card: {
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -393,12 +580,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   title: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 4 },
-  text: { fontSize: 14, color: '#555', marginVertical: 2 },
+  text: { fontSize: 14, color: '#555' },
+
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 3,
   },
   buttonSmall: {
     backgroundColor: 'tomato',
@@ -449,19 +637,4 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   date: { fontSize: 12, color: '#888', marginTop: 6 },
-  webviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'blue',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-  },
-  closeWebText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  webviewTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
 });

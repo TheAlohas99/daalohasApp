@@ -4,7 +4,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import SText from '../SText';
 import { s } from '../../styles/ReservationModalsDetailsStyle';
 
-export default function KPIRow({ nights = 0, guests = 1 }) {
+export default function KPIRow({ nights = 0, guests = 0 }) {
   return (
     <View style={s.kpiRow}>
       <View style={s.kpiItem}>

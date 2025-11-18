@@ -53,3 +53,35 @@ export const getGuestName = r =>
   r?.primary_guest_name ??
   r?.name ??
   'Guest';
+
+
+
+export const getDueStatus = (createdAt) => {
+  if (!createdAt) return { label: '', color: '#555' };
+
+  const created = new Date(createdAt);
+  const now = new Date();
+
+  // Reset time to midnight for both dates
+  const createdDate = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+  const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const diffMs = nowDate - createdDate;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const remaining = 2 - diffDays; // due period is 2 days
+
+  if (remaining > 1)
+    return { label: `Due in ${remaining} days`, color: '#007bff' }; 
+  if (remaining === 1)
+    return { label: `Due tomorrow`, color: '#007bff' }; 
+  if (remaining === 0)
+    return { label: `Due today`, color: 'orange' };
+  if (remaining < 0)
+    return {
+      label: `${Math.abs(remaining)} day${Math.abs(remaining) > 1 ? 's' : ''} overdue`,
+      color: 'red',
+    };
+
+  return { label: '', color: '#555' };
+};
+
