@@ -22,7 +22,7 @@ import { useDispatch, useSelector, shallowEqual } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 
-import MultiPropertyPicker from '../components/MultiPropertyPicker';   // ✅ NEW
+import MultiPropertyPicker from '../components/MultiPropertyPicker'; 
 
 import { fetchReservationsByDates } from '../redux/slice/DashboardReservationSlice';
 import { getProperty } from '../redux/slice/PropertySlice';
@@ -144,7 +144,7 @@ export default function ReservationsDashboardScreen() {
   const [selectedPropertyIds, setSelectedPropertyIds] = useState([]); 
   const getId = p => normalizeId(p?._id ?? p?.id ?? p);               
 
-  console.log(selectedPropertyIds)
+  // console.log(selectedPropertyIds)
 
   // console.log(apiObj)
   // Load property data on mount

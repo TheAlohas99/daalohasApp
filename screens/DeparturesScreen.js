@@ -125,7 +125,7 @@ export default function DeparturesScreen() {
         )}
       />
 
-      {/* ✅ Modal now uses reservationId directly */}
+      {/* Modal now uses reservationId directly */}
       {showModal && selectedReservationId && (
         <ReservationDetailsModal
           key={selectedReservationId}

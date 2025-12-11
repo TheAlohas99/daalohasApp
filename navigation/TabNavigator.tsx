@@ -6,7 +6,8 @@ import DashboardScreen from '../screens/DashboardScreen';
 import OwnerDashboardScreen from '../screens/OwnerDashboardScreen';
 import AvailabilityScreen from '../screens/AvailabilityScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import ReportScreen from '../screens/ReportScreen';
+import IncidentScreen from '../screens/ReportScreen';  
+import JobsScreen from '../screens/JobsScreen';        
 
 const Tab = createBottomTabNavigator();
 
@@ -34,23 +35,24 @@ export default function TabNavigator({ setIsLoggedIn }: TabNavProps) {
 
   if (role === null) return null;
 
- 
-
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
           let iconName: string = 'home-outline';
+
           if (route.name === 'Availability') iconName = 'calendar-outline';
-          else if (route.name === 'Reports') iconName = 'document-text-outline';
+          else if (route.name === 'Incident') iconName = 'warning-outline';       
+          else if (route.name === 'Jobs') iconName = 'briefcase-outline';       
           else if (route.name === 'Profile') iconName = 'person-outline';
+
           return <Ionicons name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: 'tomato',
         tabBarInactiveTintColor: 'gray',
       })}
     >
-      {/* Conditionally render dashboard */}
+      {/* Dashboard based on role */}
       {role === 'owner' ? (
         <Tab.Screen
           name="OwnerDashboard"
@@ -65,17 +67,24 @@ export default function TabNavigator({ setIsLoggedIn }: TabNavProps) {
         />
       )}
 
+      {/* Availability */}
       <Tab.Screen name="Availability" component={AvailabilityScreen} />
 
-      {/*  Added Report Screen Tab */}
-      {/* {role === 'owner' ? null : ( */}
-        <Tab.Screen
-          name="Reports"
-          component={ReportScreen}
-          options={{ headerShown: false }}
-        />
-      {/* )} */}
+      {/*  NEW: Incident Tab */}
+      <Tab.Screen
+        name="Incident"
+        component={IncidentScreen}
+        options={{ headerShown: false }}
+      />
 
+      {/*  NEW: Jobs Tab */}
+      <Tab.Screen
+        name="Jobs"
+        component={JobsScreen}
+        options={{ headerShown: false }}
+      />
+
+      {/* Profile */}
       <Tab.Screen name="Profile">
         {props => <ProfileScreen {...props} setIsLoggedIn={setIsLoggedIn} />}
       </Tab.Screen>

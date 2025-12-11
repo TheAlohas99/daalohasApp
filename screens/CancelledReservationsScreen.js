@@ -53,6 +53,7 @@ export default function CancelledReservationsScreen() {
   );
 
   const { data } = useSelector(s => s.dashboardreservation || {}, shallowEqual);
+  console.log(data)
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedReservationId, setSelectedReservationId] = useState(null);
@@ -134,7 +135,7 @@ export default function CancelledReservationsScreen() {
         )}
       />
 
-      {/* ✅ Modal using only reservationId */}
+      {/*  Modal using only reservationId */}
       {showModal && selectedReservationId && (
         <ReservationDetailsModal
           key={selectedReservationId}
@@ -165,7 +166,7 @@ const styles = StyleSheet.create({
   headerRow: {
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 6,
+    paddingBottom: 6, 
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

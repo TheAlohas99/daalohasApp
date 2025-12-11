@@ -27,25 +27,25 @@ function MultiPropertyPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [loaded, setLoaded] = useState(false);
+  // const [loaded, setLoaded] = useState(false);
 
   //-------------------------------------------
   // 1️⃣ LOAD FROM ASYNC STORAGE (ONLY ONCE)
   //-------------------------------------------
-  useEffect(() => {
-    (async () => {
-      try {
-        const saved = await AsyncStorage.getItem('multiPropertySelectedIds');
-        if (saved) {
-          onChange(JSON.parse(saved)); // apply saved selection
-        }
-      } catch (e) {
-        console.warn('Failed to load saved properties', e);
-      } finally {
-        setLoaded(true);
-      }
-    })();
-  }, []);
+  // useEffect(() => {
+  //   (async () => {
+  //     try {
+  //       const saved = await AsyncStorage.getItem('multiPropertySelectedIds');
+  //       if (saved) {
+  //         onChange(JSON.parse(saved)); // apply saved selection
+  //       }
+  //     } catch (e) {
+  //       console.warn('Failed to load saved properties', e);
+  //     } finally {
+  //       setLoaded(true);
+  //     }
+  //   })();
+  // }, []);
 
   //-------------------------------------------
   // 2️⃣ DO NOT SAVE ANYTHING HERE ANYMORE
