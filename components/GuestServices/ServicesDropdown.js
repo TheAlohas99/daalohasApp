@@ -1,4 +1,3 @@
-// src/components/GuestServices/ServicesDropdown.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -7,13 +6,12 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
-  // Add ScrollView for better usability in a long list
-  ScrollView, 
+  ScrollView,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import SText from '../SText';
+// ✅ Route directly through your custom validation handler
+import { apiFetch } from '../../utils/api';
 
 /* ===== Theme & API ===== */
 const BRAND = {
@@ -42,9 +40,8 @@ function Checkbox({ checked }) {
   );
 }
 
-// Update Prop Type: value is now an array of { id: string, price: number }
 export default function ServicesDropdown({
-  value = [], // Expected format: [{ id: '...', price: 1000 }, ...]
+  value = [],
   onChange = () => {},
   label = 'Guest Services',
   reservationPaidAmount = 0,
@@ -69,21 +66,36 @@ export default function ServicesDropdown({
       try {
         setLoading(true);
         setErr('');
-        const token = await AsyncStorage.getItem('token');
-        const res = await axios.get(SERVICES_URL, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          withCredentials: true,
+
+        // ✅ Execute request through apiFetch with authorization safety flags activated
+        const response = await apiFetch(SERVICES_URL, {
+          method: 'GET',
+          skipAuthRedirect: true, // 🛡️ Prevent a failing response from kicking the user out
         });
-        const raw = Array.isArray(res?.data)
-          ? res.data
-          : Array.isArray(res?.data?.allServices)
-          ? res.data.allServices
-          : Array.isArray(res?.data?.data)
-          ? res.data.data
+
+        if (!response.ok) {
+          throw new Error(
+            'Server returned a bad status code response profiles',
+          );
+        }
+
+        const data = await response.json();
+
+        const raw = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.allServices)
+          ? data.allServices
+          : Array.isArray(data?.data)
+          ? data.data
           : [];
+
         const onlyActive = raw.filter(isServiceActive);
         if (mounted) setServices(onlyActive);
-      } catch {
+      } catch (error) {
+        console.warn(
+          '[DROPDOWN ERROR] Service retrieval failed:',
+          error.message,
+        );
         if (mounted) setErr('Failed to load services');
       } finally {
         if (mounted) setLoading(false);
@@ -94,8 +106,6 @@ export default function ServicesDropdown({
     };
   }, []);
 
-
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return services;
@@ -104,7 +114,6 @@ export default function ServicesDropdown({
     );
   }, [services, query]);
 
-  // Map to hold default prices for services (used when selecting a service)
   const defaultPriceMap = useMemo(() => {
     const m = new Map();
     services.forEach(s => {
@@ -115,80 +124,62 @@ export default function ServicesDropdown({
     return m;
   }, [services]);
 
-  // Check if a service ID is present in the new 'value' structure
   const isChecked = id => value.some(svc => svc.id === id);
-  
-  // Toggle service selection
+
   const toggleOne = id => {
     if (isChecked(id)) {
-      // Remove service
       onChange(value.filter(v => v.id !== id));
     } else {
-      // Add service with its default price
       const defaultPrice = defaultPriceMap.get(id) || 0;
       onChange([...value, { id, price: defaultPrice }]);
     }
   };
 
-  // Handler to update the price of a selected service
   const updateServicePrice = (id, newPriceString) => {
-    // Only allow digits and a single decimal point for price input
     const cleanPriceString = newPriceString.replace(/[^0-9.]/g, '');
     const newPrice = Number(cleanPriceString);
 
     onChange(
-      value.map(svc => 
-        svc.id === id 
-          ? { ...svc, price: isNaN(newPrice) ? 0 : newPrice } // Update price
-          : svc
-      )
+      value.map(svc =>
+        svc.id === id ? { ...svc, price: isNaN(newPrice) ? 0 : newPrice } : svc,
+      ),
     );
   };
-  
-  // Get the current price of a selected service, or default to 0
-  const getCurrentServicePrice = (id, defaultPrice) => {
-      const selectedService = value.find(svc => svc.id === id);
-      // Use the price from 'value' if selected, otherwise use the default price or 0
-      return selectedService ? (selectedService.price || 0) : (defaultPrice || 0);
-  };
 
+  const getCurrentServicePrice = (id, defaultPrice) => {
+    const selectedService = value.find(svc => svc.id === id);
+    return selectedService ? selectedService.price || 0 : defaultPrice || 0;
+  };
 
   const allIds = useMemo(
     () => filtered.map(s => s?._id).filter(Boolean),
     [filtered],
   );
-  
-  // Check if all services on the page are selected
+
   const allOnPageSelected =
     allIds.length > 0 && allIds.every(id => isChecked(id));
-    
-  // Toggle select/unselect all services on the page
+
   const toggleSelectAll = () => {
     if (allOnPageSelected) {
-      // Unselect all: remove filtered service IDs from value
       onChange(value.filter(v => !allIds.includes(v.id)));
     } else {
-      // Select all: add all filtered services that aren't already selected
       const currentlySelectedIds = new Set(value.map(v => v.id));
       const newServices = filtered
         .filter(s => s?._id && !currentlySelectedIds.has(s._id))
-        .map(s => ({ 
-          id: s._id, 
-          price: defaultPriceMap.get(s._id) || 0 
+        .map(s => ({
+          id: s._id,
+          price: defaultPriceMap.get(s._id) || 0,
         }));
-        
+
       onChange(Array.from(new Set([...value, ...newServices])));
     }
   };
 
-
-  // Recalculate the total based on the prices in the 'value' array
   const servicesTotal = useMemo(
     () => value.reduce((sum, item) => sum + (Number(item.price) || 0), 0),
     [value],
   );
 
-  // Format number
   const fmt = n => `${currencySymbol}${Number(n || 0).toLocaleString('en-IN')}`;
   const selectedCount = value.length;
 
@@ -196,7 +187,6 @@ export default function ServicesDropdown({
     <View style={{ marginTop: 14 }}>
       <SText style={styles.label}>{label}</SText>
 
-      {/* Trigger (no chips) */}
       <Pressable
         onPress={() => setOpen(o => !o)}
         style={({ pressed }) => [
@@ -222,7 +212,6 @@ export default function ServicesDropdown({
 
       {open && (
         <View style={styles.dropdownPanel}>
-          {/* Search */}
           <View style={styles.searchRow}>
             <Icon name="search" size={14} color={BRAND.muted} />
             <TextInput
@@ -239,13 +228,12 @@ export default function ServicesDropdown({
             ) : null}
           </View>
 
-          {/* Select all (shown) */}
           <Pressable
             onPress={toggleSelectAll}
             style={({ pressed }) => [
               styles.rowItem,
               pressed && { backgroundColor: '#f7fbff' },
-              { borderTopWidth: 0 }, // Remove border from Select All for better look
+              { borderTopWidth: 0 },
             ]}
           >
             <View style={styles.rowLeft}>
@@ -258,7 +246,6 @@ export default function ServicesDropdown({
             </View>
           </Pressable>
 
-          {/* Items - Use ScrollView to contain a long list */}
           <ScrollView style={{ maxHeight: 240 }}>
             {loading ? (
               <View style={styles.loadingWrap}>
@@ -274,11 +261,15 @@ export default function ServicesDropdown({
                 </SText>
               </View>
             ) : err ? (
-              <SText style={{ color: BRAND.danger, fontWeight: '800' }}>
+              <SText
+                style={{ color: BRAND.danger, fontWeight: '800', padding: 8 }}
+              >
                 {err}
               </SText>
             ) : filtered.length === 0 ? (
-              <SText style={{ color: BRAND.muted, fontWeight: '700' }}>
+              <SText
+                style={{ color: BRAND.muted, fontWeight: '700', padding: 8 }}
+              >
                 No services found
               </SText>
             ) : (
@@ -287,13 +278,11 @@ export default function ServicesDropdown({
                 const label = svc?.name || svc?.title || 'Service';
                 const defaultPrice = defaultPriceMap.get(id) || 0;
                 const active = isChecked(id);
-                // Get the currently selected price from 'value' if active
-                const currentPrice = getCurrentServicePrice(id, defaultPrice); 
+                const currentPrice = getCurrentServicePrice(id, defaultPrice);
 
                 return (
                   <Pressable
                     key={id}
-                    // Only toggle selection when pressing the left side
                     onPress={() => toggleOne(id)}
                     style={({ pressed }) => [
                       styles.rowItem,
@@ -306,8 +295,7 @@ export default function ServicesDropdown({
                         {label}
                       </SText>
                     </View>
-                    
-                    {/* Editable Price Input - Only shown if active */}
+
                     {active ? (
                       <View style={styles.priceInputWrap}>
                         <SText style={styles.currencySymbolText}>
@@ -319,14 +307,11 @@ export default function ServicesDropdown({
                           onChangeText={text => updateServicePrice(id, text)}
                           placeholder="Price"
                           keyboardType="numeric"
-                          // Prevent Pressable's onPress from firing when input is focused
-                          onStartShouldSetResponder={() => true} 
-                          // Highlight the input if it's not the default price
-                          selectionColor={BRAND.primary} 
+                          onStartShouldSetResponder={() => true}
+                          selectionColor={BRAND.primary}
                         />
                       </View>
                     ) : (
-                      // Display default price if not selected
                       <SText style={styles.priceText}>
                         {fmt(defaultPrice)}
                       </SText>
@@ -337,7 +322,6 @@ export default function ServicesDropdown({
             )}
           </ScrollView>
 
-          {/* Done */}
           <View style={styles.dropdownFooter}>
             <Pressable
               onPress={() => setOpen(false)}
@@ -351,7 +335,7 @@ export default function ServicesDropdown({
           </View>
         </View>
       )}
-      {/* Footer Totals */}
+
       <View style={styles.totalsWrap}>
         <View style={styles.totalRow}>
           <SText style={styles.totalLabel}>Services total</SText>
@@ -374,15 +358,14 @@ export default function ServicesDropdown({
   );
 }
 
+// Keep your existing styles block exactly as it was defined
 const styles = StyleSheet.create({
-  // ... existing styles ...
   label: {
     fontWeight: '800',
     color: BRAND.muted,
     marginTop: 8,
     marginBottom: 6,
   },
-
   selectTrigger: {
     minHeight: 48,
     borderWidth: 1,
@@ -397,7 +380,6 @@ const styles = StyleSheet.create({
   },
   triggerText: { color: '#9ab0bf', fontWeight: '700' },
   triggerTextActive: { color: BRAND.primaryDark },
-
   dropdownPanel: {
     marginTop: 8,
     borderWidth: 1,
@@ -424,7 +406,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   searchInput: { flex: 1, color: BRAND.text, padding: 0 },
-
   rowItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -441,13 +422,11 @@ const styles = StyleSheet.create({
   },
   rowText: { color: BRAND.text, fontWeight: '800', flexShrink: 1 },
   priceText: { color: BRAND.primaryDark, fontWeight: '900', marginLeft: 8 },
-
   loadingWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
   },
-
   totalsWrap: {
     marginTop: 8,
     paddingTop: 8,
@@ -468,7 +447,6 @@ const styles = StyleSheet.create({
   totalValue: { color: BRAND.text, fontWeight: '900' },
   totalLabelStrong: { color: BRAND.primaryDark },
   totalValueStrong: { color: BRAND.primaryDark, fontSize: 16 },
-
   dropdownFooter: { alignItems: 'flex-end', marginTop: 8 },
   doneBtn: {
     backgroundColor: BRAND.primary,
@@ -477,7 +455,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   doneBtnText: { color: '#fff', fontWeight: '900' },
-
   checkbox: {
     width: 18,
     height: 18,
@@ -488,8 +465,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#fff',
   },
-  
-  // New styles for editable price
   priceInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -497,9 +472,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BRAND.border,
     borderRadius: 8,
-    // Add some margin to separate it visually from the checkbox side
-    marginLeft: 10, 
-    maxWidth: 100, // Limit the width for a clean look
+    marginLeft: 10,
+    maxWidth: 100,
   },
   currencySymbolText: {
     color: BRAND.muted,
@@ -511,7 +485,7 @@ const styles = StyleSheet.create({
     color: BRAND.primaryDark,
     fontWeight: '900',
     fontSize: 14,
-    paddingVertical: Platform.OS === 'ios' ? 4 : 2, 
+    paddingVertical: Platform.OS === 'ios' ? 4 : 2,
     paddingLeft: 0,
     paddingRight: 0,
     textAlign: 'right',

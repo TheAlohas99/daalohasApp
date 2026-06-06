@@ -639,4 +639,3 @@ const styles = StyleSheet.create({
   },
   ringPct: { fontWeight: '900', color: '#17364a' },
 });
-

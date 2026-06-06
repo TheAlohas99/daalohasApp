@@ -17,7 +17,7 @@ export default function MessageTemplate({ route }) {
   const [selected, setSelected] = useState(null);
   const baseUrl = 'https://api.daalohas.com';
 
-  // ✅ Fetch templates from backend
+  //  Fetch templates from backend
   useEffect(() => {
     const fetchTemplates = async () => {
       try {

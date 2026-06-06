@@ -14,7 +14,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import SText from '../components/SText';
-import ServicesDropdown from '../components/GuestServices/ServicesDropdown'; 
+import ServicesDropdown from '../components/GuestServices/ServicesDropdown';
 import {
   fetchReservationById,
   selectReservationObj,
@@ -88,9 +88,9 @@ export default function UpdateBooker() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
-  
+
   // State to hold objects in the format expected by ServicesDropdown: { id: '...', price: X }
-  const [selectedServices, setSelectedServices] = useState([]); 
+  const [selectedServices, setSelectedServices] = useState([]);
 
   // Prefill inputs when reservation arrives/changes
   useEffect(() => {
@@ -98,29 +98,29 @@ export default function UpdateBooker() {
       setName(String(pickName(reservation) ?? ''));
       setPhone(String(pickPhone(reservation) ?? ''));
       setEmail(String(pickEmail(reservation) ?? ''));
-      
+
       if (
         Array.isArray(reservation.service) &&
         reservation.service.length > 0
       ) {
         // Map the backend's 'serviceId' to the dropdown's 'id'
         const mappedServices = reservation.service
-            .filter(s => s?.serviceId)
-            .map(s => ({
-                id: s.serviceId, // Map serviceId to 'id'
-                price: toNumber(s.price), // Use price from reservation (potentially custom)
-                // We keep original _id if needed, but the dropdown only cares about id/price
-                _id: s._id || undefined, 
-            }));
-            
+          .filter(s => s?.serviceId)
+          .map(s => ({
+            id: s.serviceId, // Map serviceId to 'id'
+            price: toNumber(s.price), // Use price from reservation (potentially custom)
+            // We keep original _id if needed, but the dropdown only cares about id/price
+            _id: s._id || undefined,
+          }));
+
         // Filter out bad data and ensure uniqueness by service ID
-        const uniqueServices = Array.from(new Map(
-            mappedServices.map(s => [s.id, s])
-        ).values());
+        const uniqueServices = Array.from(
+          new Map(mappedServices.map(s => [s.id, s])).values(),
+        );
 
         setSelectedServices(uniqueServices);
       } else {
-          setSelectedServices([]);
+        setSelectedServices([]);
       }
     }
   }, [reservationId, reservation]);
@@ -144,14 +144,14 @@ export default function UpdateBooker() {
       const nameTrim = (name || '').trim();
       const phoneTrim = (phone || '').trim();
       const emailTrim = (email || '').trim();
-      
+
       // Map the selectedServices state back to the backend's required format:
       // [{ id: '...', price: X }] -> [{ serviceId: '...', price: X }]
       const servicesForBackend = selectedServices
         .map(svc => ({
-          serviceId: svc.id, 
+          serviceId: svc.id,
           // Ensure price is a number and includes the user's editable value
-          price: toNumber(svc.price), 
+          price: toNumber(svc.price),
           // You might include other fields like svc._id if your API requires it
         }))
         .filter(svc => svc.serviceId); // Only include valid service entries
@@ -167,7 +167,7 @@ export default function UpdateBooker() {
               ? Number(phoneTrim)
               : undefined,
           // Pass the mapped array of objects for the service field
-          service: servicesForBackend, 
+          service: servicesForBackend,
         }),
       );
 

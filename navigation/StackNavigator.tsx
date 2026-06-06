@@ -1,20 +1,17 @@
-// navigation/StackNavigator.tsx
 import React, { useEffect, useState } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jwtDecode } from 'jwt-decode';
 
 import LoginScreen from '../screens/Login';
 import TabNavigator from './TabNavigator';
-import GuestScreen from '../screens/GuestScreen';
 import MessageTemplate from '../screens/MessageTemplate';
 import NewReservationsScreen from '../screens/NewReservationsScreen';
 import CancelledReservationsScreen from '../screens/CancelledReservationsScreen';
 import UpdateBooker from '../screens/UpdateBooker';
 import ArrivalsScreen from '../screens/ArrivalsScreen';
-import StayScreen from "../screens/StayScreen"
-import DeparturesScreen from "../screens/DeparturesScreen"
-
+import StayScreen from '../screens/StayScreen';
+import DeparturesScreen from '../screens/DeparturesScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { jwtDecode } from 'jwt-decode';
 
 type StackNavigatorProps = {
   isLoggedIn: boolean;
@@ -36,22 +33,23 @@ export default function StackNavigator({
 
         if (!token) {
           setIsLoggedIn(false);
-          setLoading(false);
           return;
         }
 
         const decoded: any = jwtDecode(token);
 
-        if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+        const now = Date.now() / 1000;
+
+        if (!decoded?.exp || decoded.exp <= now) {
           console.log('Token expired');
-          await AsyncStorage.multiRemove(['token', 'user']);
+          await AsyncStorage.multiRemove(['token', 'user', 'mobile']);
           setIsLoggedIn(false);
         } else {
           setIsLoggedIn(true);
         }
       } catch (err) {
         console.log('Invalid token', err);
-        await AsyncStorage.multiRemove(['token', 'user']);
+        await AsyncStorage.multiRemove(['token', 'user', 'mobile']);
         setIsLoggedIn(false);
       } finally {
         setLoading(false);
@@ -59,11 +57,9 @@ export default function StackNavigator({
     };
 
     verifyToken();
-  }, []);
+  }, [isLoggedIn]); // ✅ FIX: re-sync only when needed
 
-  // Optional: show nothing while verifying token
   if (loading) return null;
-
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isLoggedIn ? (
@@ -71,7 +67,7 @@ export default function StackNavigator({
           <Stack.Screen name="HomeTabs">
             {props => <TabNavigator {...props} setIsLoggedIn={setIsLoggedIn} />}
           </Stack.Screen>
-          <Stack.Screen name="GuestScreen" component={GuestScreen} />
+
           <Stack.Screen name="MessageTemplate" component={MessageTemplate} />
           <Stack.Screen
             name="NewReservations"

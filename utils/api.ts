@@ -1,30 +1,57 @@
-// utils/api.ts
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let onUnauthorized: null | (() => void) = null;
-export const setOnUnauthorized = (fn: () => void) => (onUnauthorized = fn);
 
-function withBearer(token: string) {
-  if (!token) return "";
-  return token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
-}
+export const setOnUnauthorized = (fn: () => void) => {
+  onUnauthorized = fn;
+};
+
+let isLoggingOut = false;
 
 export async function apiFetch(input: RequestInfo, init: RequestInit = {}) {
-  const token = await AsyncStorage.getItem("token");
-  const headers = {
-    ...(init.headers || {}),
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: withBearer(token) } : {}),
-  };
+  try {
+    const token = await AsyncStorage.getItem('token');
 
-  const res = await fetch(input as any, { ...init, headers });
+    console.log('TOKEN FROM STORAGE =>', token);
 
-  if (res.status === 401) {
-    // server says token invalid/expired
-    await AsyncStorage.removeItem("token");
-    if (onUnauthorized) onUnauthorized();
-    throw new Error("Unauthorized");
+    const headers: any = {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+      ...(token
+        ? {
+            Authorization: `Bearer ${token.trim()}`, // ✅ FIX HERE
+          }
+        : {}),
+    };
+
+    console.log('AUTH HEADER =>', token ? `Bearer ${token.trim()}` : 'NO TOKEN');
+
+    const response = await fetch(input as any, {
+      ...init,
+      headers,
+    });
+
+    if (response.status === 401) {
+      console.log('401 API URL =>', input);
+    }
+
+    if (response.status === 401 && token && !isLoggingOut) {
+      isLoggingOut = true;
+
+      console.log('Session expired');
+
+      await AsyncStorage.multiRemove(['token', 'user', 'mobile']);
+
+      onUnauthorized?.();
+
+      setTimeout(() => {
+        isLoggingOut = false;
+      }, 1000);
+    }
+
+    return response;
+  } catch (error) {
+    console.log('API ERROR =>', error);
+    throw error;
   }
-
-  return res;
 }

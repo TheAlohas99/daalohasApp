@@ -1,10 +1,10 @@
-// screens/NewReservationsScreen.js
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { useSelector, shallowEqual, useDispatch } from 'react-redux';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import { getProperty } from '../redux/slice/PropertySlice';
 import ReservationCard from '../components/ReservationCard';
 
@@ -34,7 +34,9 @@ export default function NewReservationsScreen() {
   const navigation = useNavigation();
 
   const selectedDate = route.params?.date || ymdLocal(new Date());
-  const { role } = useSelector(s => ({ role: s.property.role }), shallowEqual);
+  
+  // Safe Redux selection mapping configuration
+  const { role } = useSelector(s => ({ role: s.property?.role }), shallowEqual);
   const { data } = useSelector(
     s => s.dashboardreservation || {},
     shallowEqual,
@@ -44,17 +46,17 @@ export default function NewReservationsScreen() {
   const [selectedReservationId, setSelectedReservationId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Directly use the pre-filtered list returned from the backend
+  // Derive pre-filtered dashboard database lists safely
   const list = useMemo(() => data?.newReservations?.data || [], [data]);
-
   const badgeCount = list.length;
 
-  const headerDateLabel = (() => {
+  const headerDateLabel = useMemo(() => {
     const d = new Date(selectedDate);
+    if (Number.isNaN(d.getTime())) return '—';
     const weekday = d.toLocaleDateString(undefined, { weekday: 'long' });
     const month = d.toLocaleDateString(undefined, { month: 'short' });
     return `${weekday}, ${month} ${d.getDate()}`;
-  })();
+  }, [selectedDate]);
 
   const onCardPress = useCallback(item => {
     const id = refId(item);
@@ -63,28 +65,35 @@ export default function NewReservationsScreen() {
     setModalOpen(true);
   }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isMounted) => {
     try {
       const userJson = await AsyncStorage.getItem('user');
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        const { email, mobile } = user;
+      if (userJson && isMounted) {
+        const user = JSON.parse(userJson) || {};
+        const email = user.email;
+        const mobile = user.mobile || '';
+        
         dispatch(
-          getProperty({ email, mobile: (mobile || '').replace(/^\+/, '') }),
+          getProperty({ email, mobile: mobile.replace(/^\+/, '') }),
         );
       }
     } catch (error) {
-      console.error('Error loading user from storage:', error);
+      console.error('Error querying profile data tokens inside dashboard list:', error);
     }
   }, [dispatch]);
 
+  // Combined listener with full clean-up tracking checks
   useEffect(() => {
-    fetchData();
+    let isMounted = true;
+    fetchData(isMounted);
+    return () => {
+      isMounted = false;
+    };
   }, [fetchData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchData();
+    await fetchData(true);
     setRefreshing(false);
   }, [fetchData]);
 
@@ -92,7 +101,7 @@ export default function NewReservationsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header Container Area */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={styles.title}>New</Text>
@@ -103,27 +112,32 @@ export default function NewReservationsScreen() {
         <Text style={styles.subtitle}>{headerDateLabel}</Text>
       </View>
 
-      {/* Scrollable list */}
+      {/* Main Reservation Stack Grid */}
       <FlatList
         data={list}
         keyExtractor={keyFor}
         contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={
-          <Text style={{ color: '#6b7a87', paddingHorizontal: 4 }}>
+          <Text style={{ color: '#6b7a87', paddingHorizontal: 4, paddingTop: 8 }}>
             No new reservations.
           </Text>
         }
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor="#0b86d0"
+            colors={['#0b86d0']} 
+          />
         }
         renderItem={({ item }) => (
           <ReservationCard item={item} onPress={() => onCardPress(item)} />
         )}
       />
 
-      {/* ✅ Use reservationId instead of array */}
-      {showModal && selectedReservationId && (
+      {/* Conditional Detailed Overlay Modal sheet */}
+      {showModal && !!selectedReservationId && (
         <ReservationDetailsModal
           key={selectedReservationId}
           visible={modalOpen}
@@ -131,7 +145,6 @@ export default function NewReservationsScreen() {
           onRequestClose={() => setModalOpen(false)}
           reservationId={selectedReservationId}
           onCheckInPress={reservationId => {
-            console.log('Check-in pressed for reservation ID:', reservationId);
             setModalOpen(false);
             navigation.navigate('GuestScreen', { reservationId });
           }}

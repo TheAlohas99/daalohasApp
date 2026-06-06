@@ -28,21 +28,21 @@ const BRAND = {
 const LoginScreen = ({ setIsLoggedIn }) => {
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState('');
-  const [step, setStep] = useState('mobile'); 
+  const [step, setStep] = useState('mobile');
   const [message, setMessage] = useState('');
-  const [msgTone, setMsgTone] = useState('info'); 
+  const [msgTone, setMsgTone] = useState('info');
   const [loading, setLoading] = useState(false);
-  const [resendIn, setResendIn] = useState(0); 
+  const [resendIn, setResendIn] = useState(0);
 
   // derived
   const isValidMobile = useMemo(
     () => /^(\+?91)?[6-9]\d{9}$/.test(mobile.replace(/\s|-/g, '')),
-    [mobile]
+    [mobile],
   );
   const isValidOtp = useMemo(() => /^\d{4,6}$/.test(otp), [otp]);
 
   // format & sanitize
-  const toE164 = (raw) => {
+  const toE164 = raw => {
     const digits = raw.replace(/[^\d]/g, '');
     return digits.startsWith('91') && digits.length === 12
       ? `+${digits}`
@@ -52,25 +52,41 @@ const LoginScreen = ({ setIsLoggedIn }) => {
   // cool-down timer for resend
   useEffect(() => {
     if (!resendIn) return;
-    const t = setInterval(() => setResendIn((prev) => (prev > 0 ? prev - 1 : 0)), 1000);
+    const t = setInterval(
+      () => setResendIn(prev => (prev > 0 ? prev - 1 : 0)),
+      1000,
+    );
     return () => clearInterval(t);
   }, [resendIn]);
 
-  const showInfo = (msg) => { setMessage(msg); setMsgTone('info'); };
-  const showSuccess = (msg) => { setMessage(msg); setMsgTone('success'); };
-  const showError = (msg) => { setMessage(msg); setMsgTone('error'); };
+  const showInfo = msg => {
+    setMessage(msg);
+    setMsgTone('info');
+  };
+  const showSuccess = msg => {
+    setMessage(msg);
+    setMsgTone('success');
+  };
+  const showError = msg => {
+    setMessage(msg);
+    setMsgTone('error');
+  };
 
   const handleSendOtp = async () => {
     try {
-      if (!isValidMobile) return showError('Please enter a valid Indian mobile number.');
+      if (!isValidMobile)
+        return showError('Please enter a valid Indian mobile number.');
       setLoading(true);
       const formattedMobile = toE164(mobile);
 
-      const res = await apiFetch('https://api.daalohas.com/api/v1/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile: formattedMobile }),
-      });
+      const res = await apiFetch(
+        'https://api.daalohas.com/api/v1/auth/send-otp',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mobile: formattedMobile }),
+        },
+      );
       const data = await res.json();
 
       if (data && data.success) {
@@ -90,26 +106,50 @@ const LoginScreen = ({ setIsLoggedIn }) => {
   const handleVerifyOtp = async () => {
     try {
       if (!isValidOtp) return showError('Enter the 4–6 digit OTP.');
+
       setLoading(true);
+
       const formattedMobile = toE164(mobile);
 
-      const res = await apiFetch('https://api.daalohas.com/api/v1/otp-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile: formattedMobile, otp }),
-      });
+      const res = await apiFetch(
+        'https://api.daalohas.com/api/v1/auth/mobile/verify-otp',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mobile: formattedMobile,
+            otp,
+          }),
+        },
+      );
+
       const data = await res.json();
+
+      console.log('VERIFY OTP RESPONSE =>', data);
 
       if (data && data.success) {
         showSuccess('Login successful 🎉');
-        await AsyncStorage.setItem('token', data.token);
-        await AsyncStorage.setItem('user', JSON.stringify({ ...(data.user || {}) }));
+
+        const user = data.user || {};
+
+        await AsyncStorage.setItem('token', String(data.token || ''));
+        await AsyncStorage.setItem('user', JSON.stringify(user));
         await AsyncStorage.setItem('mobile', formattedMobile);
+
+        // ✅ ALSO STORE fallback fields (NO BREAKING CHANGE)
+        await AsyncStorage.setItem('email', user.email || '');
+        await AsyncStorage.setItem('firstName', user.firstName || '');
+        await AsyncStorage.setItem('lastName', user.lastName || '');
+        await AsyncStorage.setItem('role', user.role || '');
+        await AsyncStorage.setItem('isVerify', String(user.isVerify || false));
+
         setIsLoggedIn(true);
       } else {
         showError((data && data.message) || 'Invalid OTP. Please try again.');
       }
     } catch (e) {
+      console.log('OTP VERIFY ERROR =>', e);
+
       showError('Network error while verifying OTP.');
     } finally {
       setLoading(false);
@@ -121,11 +161,9 @@ const LoginScreen = ({ setIsLoggedIn }) => {
     handleSendOtp();
   };
 
-  // OTP input with 6 boxes (works with 4–6 digits)
   const otpRef = useRef(null);
   const boxes = Array.from({ length: 6 });
 
-  // Ensure keyboard shows when switching to OTP step
   useEffect(() => {
     if (step === 'otp') {
       const t = setTimeout(() => otpRef.current?.focus(), 120);
@@ -144,7 +182,9 @@ const LoginScreen = ({ setIsLoggedIn }) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.title}>{step === 'mobile' ? 'Sign in with Mobile' : 'Enter OTP'}</Text>
+        <Text style={styles.title}>
+          {step === 'mobile' ? 'Sign in with Mobile' : 'Enter OTP'}
+        </Text>
         <Text style={styles.subtitle}>
           {step === 'mobile'
             ? 'We’ll send a one-time password to your number'
@@ -163,7 +203,10 @@ const LoginScreen = ({ setIsLoggedIn }) => {
                 returnKeyType="done"
                 value={mobile}
                 onChangeText={setMobile}
-                style={[styles.input, !isValidMobile && mobile.length > 0 && styles.inputError]}
+                style={[
+                  styles.input,
+                  !isValidMobile && mobile.length > 0 && styles.inputError,
+                ]}
                 maxLength={14}
                 autoComplete="tel"
                 textContentType="telephoneNumber"
@@ -173,7 +216,10 @@ const LoginScreen = ({ setIsLoggedIn }) => {
             </View>
 
             <TouchableOpacity
-              style={[styles.cta, (!isValidMobile || loading) && styles.ctaDisabled]}
+              style={[
+                styles.cta,
+                (!isValidMobile || loading) && styles.ctaDisabled,
+              ]}
               onPress={handleSendOtp}
               disabled={!isValidMobile || loading}
               activeOpacity={0.9}
@@ -190,7 +236,9 @@ const LoginScreen = ({ setIsLoggedIn }) => {
 
             <View style={styles.helperRow}>
               <Icon name="lock-check" size={16} color={BRAND.muted} />
-              <Text style={styles.helperText}>Your number is used only for verification</Text>
+              <Text style={styles.helperText}>
+                Your number is used only for verification
+              </Text>
             </View>
           </>
         )}
@@ -206,7 +254,6 @@ const LoginScreen = ({ setIsLoggedIn }) => {
               <Text style={styles.backText}>Change number</Text>
             </TouchableOpacity>
 
-            {/* OTP boxes + invisible overlay input */}
             <TouchableOpacity
               activeOpacity={1}
               onPress={() => otpRef.current?.focus()}
@@ -231,13 +278,15 @@ const LoginScreen = ({ setIsLoggedIn }) => {
                 );
               })}
 
-              {/* Invisible, full-width input to reliably open keyboard */}
               <TextInput
                 ref={otpRef}
                 style={styles.hiddenOtpInput}
-                keyboardType={Platform.select({ ios: 'number-pad', android: 'numeric' })}
+                keyboardType={Platform.select({
+                  ios: 'number-pad',
+                  android: 'numeric',
+                })}
                 value={otp}
-                onChangeText={(t) => setOtp(t.replace(/[^\d]/g, '').slice(0, 6))}
+                onChangeText={t => setOtp(t.replace(/[^\d]/g, '').slice(0, 6))}
                 autoFocus
                 showSoftInputOnFocus={true}
                 textContentType="oneTimeCode"
@@ -253,7 +302,10 @@ const LoginScreen = ({ setIsLoggedIn }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.cta, (!isValidOtp || loading) && styles.ctaDisabled]}
+              style={[
+                styles.cta,
+                (!isValidOtp || loading) && styles.ctaDisabled,
+              ]}
               onPress={handleVerifyOtp}
               disabled={!isValidOtp || loading}
               activeOpacity={0.9}
@@ -270,7 +322,10 @@ const LoginScreen = ({ setIsLoggedIn }) => {
 
             <View style={styles.resendRow}>
               <Text style={styles.resendText}>Didn’t get the code?</Text>
-              <TouchableOpacity onPress={handleResend} disabled={resendIn > 0 || loading}>
+              <TouchableOpacity
+                onPress={handleResend}
+                disabled={resendIn > 0 || loading}
+              >
                 <Text
                   style={[
                     styles.resendLink,
@@ -288,8 +343,14 @@ const LoginScreen = ({ setIsLoggedIn }) => {
           <View
             style={[
               styles.msg,
-              msgTone === 'success' && { backgroundColor: '#e9f9f1', borderColor: '#b6f0d7' },
-              msgTone === 'error' && { backgroundColor: '#ffeaea', borderColor: '#ffc4c4' },
+              msgTone === 'success' && {
+                backgroundColor: '#e9f9f1',
+                borderColor: '#b6f0d7',
+              },
+              msgTone === 'error' && {
+                backgroundColor: '#ffeaea',
+                borderColor: '#ffc4c4',
+              },
             ]}
           >
             <Icon
@@ -321,13 +382,6 @@ const LoginScreen = ({ setIsLoggedIn }) => {
           </View>
         )}
       </View>
-
-      {/* <View style={styles.footer}>
-        <Icon name="shield-lock-outline" size={16} color={BRAND.muted} />
-        <Text style={styles.footerText}>
-          Protected by OTP • By continuing you agree to our Terms
-        </Text>
-      </View> */}
     </KeyboardAvoidingView>
   );
 };
@@ -335,9 +389,25 @@ const LoginScreen = ({ setIsLoggedIn }) => {
 export default LoginScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BRAND.bg, padding: 20, justifyContent: 'center' },
-  header: { position: 'absolute', top: 18, left: 20, flexDirection: 'row', alignItems: 'center' },
-  brand: { marginLeft: 8, fontSize: 18, fontWeight: '700', color: BRAND.primary },
+  container: {
+    flex: 1,
+    backgroundColor: BRAND.bg,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  header: {
+    position: 'absolute',
+    top: 18,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brand: {
+    marginLeft: 8,
+    fontSize: 18,
+    fontWeight: '700',
+    color: BRAND.primary,
+  },
   card: {
     backgroundColor: BRAND.surface,
     borderRadius: 16,
@@ -350,8 +420,12 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '700', color: BRAND.text },
   subtitle: { marginTop: 6, fontSize: 13, color: BRAND.muted },
-
-  inputRow: { marginTop: 18, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  inputRow: {
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   ccBox: {
     height: 48,
     borderRadius: 12,
@@ -375,7 +449,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   inputError: { borderColor: '#ffb4b4' },
-
   cta: {
     marginTop: 16,
     height: 50,
@@ -388,19 +461,26 @@ const styles = StyleSheet.create({
   },
   ctaDisabled: { opacity: 0.6 },
   ctaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  helperRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  helperRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   helperText: { color: BRAND.muted, fontSize: 12 },
-
-  backRow: { marginTop: 14, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  backRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   backText: { color: BRAND.primary, fontSize: 14, fontWeight: '600' },
-
   otpRow: {
     marginTop: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    position: 'relative', // allow absolute overlay
+    position: 'relative',
   },
   otpBox: {
     width: 46,
@@ -412,24 +492,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  otpBoxFocused: { borderColor: BRAND.accent, shadowColor: BRAND.accent, shadowOpacity: 0.12, shadowRadius: 8 },
+  otpBoxFocused: {
+    borderColor: BRAND.accent,
+    shadowColor: BRAND.accent,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+  },
   otpBoxFilled: { borderColor: '#d8e7ef' },
   otpChar: { fontSize: 20, fontWeight: '700', color: BRAND.text },
-
-  // Invisible full-width input overlay so taps open keyboard on all devices
   hiddenOtpInput: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 56,     // match otp box height
-    opacity: 0.01,  // nearly invisible but still interactive
+    height: 56,
+    opacity: 0.01,
   },
-
-  resendRow: { marginTop: 14, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  resendRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
   resendText: { color: BRAND.muted },
   resendLink: { color: BRAND.primary, fontWeight: '700' },
   resendDisabled: { color: '#98aab9', fontWeight: '600' },
-
   msg: {
     marginTop: 14,
     borderWidth: 1,
@@ -442,7 +528,4 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   msgText: { color: BRAND.primary, fontSize: 13, flexShrink: 1 },
-
-  // footer: { marginTop: 16, alignItems: 'center', gap: 6 },
-  // footerText: { fontSize: 12, color: BRAND.muted },
 });

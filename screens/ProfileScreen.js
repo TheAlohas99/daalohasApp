@@ -3,11 +3,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   Alert,
   RefreshControl,
   ScrollView,
+  StyleSheet,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -31,55 +31,53 @@ export default function ProfileScreen({ setIsLoggedIn }) {
     role: '',
     isVerify: false,
   });
+
   const [refreshing, setRefreshing] = useState(false);
 
   const loadProfile = useCallback(async () => {
-    const tryJSON = async key => {
-      const raw = await AsyncStorage.getItem(key);
-      if (!raw) return null;
+    const get = async key => {
+      const v = await AsyncStorage.getItem(key);
+      return v || null;
+    };
+
+    const parseJSON = v => {
       try {
-        return JSON.parse(raw);
+        return JSON.parse(v);
       } catch {
         return null;
       }
     };
 
-    // Prefer a full user object if present
-    const [userObj, profileObj] = await Promise.all([
-      tryJSON('user'),
-      tryJSON('profile'),
-    ]);
+    // PRIMARY SOURCE: user object
+    const userRaw = await get('user');
+    const userObj = parseJSON(userRaw) || {};
 
-    // Fallback to individual strings
-    const [firstName, lastName, email, mobile, role, isVerify] =
-      await Promise.all([
-        AsyncStorage.getItem('firstName'),
-        AsyncStorage.getItem('lastName'),
-        AsyncStorage.getItem('email'),
-        AsyncStorage.getItem('mobile'),
-        AsyncStorage.getItem('role'),
-        AsyncStorage.getItem('isVerify'),
-      ]);
+    // fallback fields
+    const firstName = await get('firstName');
+    const lastName = await get('lastName');
+    const email = await get('email');
+    const mobile = await get('mobile');
+    const role = await get('role');
+    const isVerify = await get('isVerify');
 
-    const source = profileObj || userObj || {};
-    const fullName =
-      (firstName || source.firstName || '') +
-      (lastName || source.lastName ? ` ${lastName || source.lastName}` : '');
+    const first = firstName || userObj.firstName || '';
+    const last = lastName || userObj.lastName || '';
 
     const merged = {
-      name: fullName.trim() || source.name || 'Guest User',
-      email: email || source.email || '',
-      // Show clean mobile (strip + or +91 visually)
-      mobile: ((mobile || source.mobile || '') + '')
+      name: `${first} ${last}`.trim() || userObj.name || 'Guest User',
+
+      email: email || userObj.email || '',
+
+      mobile: ((mobile || userObj.mobile || '') + '')
         .replace(/^\+91/, '')
         .replace(/^\+/, ''),
-      role: role || source.role || '',
+
+      role: role || userObj.role || '',
+
       isVerify:
-        typeof isVerify === 'string'
-          ? isVerify === 'true'
-          : typeof isVerify === 'boolean'
-          ? isVerify
-          : !!source.isVerify,
+        isVerify === 'true' ||
+        isVerify === true ||
+        userObj.isVerify === true,
     };
 
     setProfile(merged);
@@ -102,8 +100,17 @@ export default function ProfileScreen({ setIsLoggedIn }) {
         text: 'Logout',
         style: 'destructive',
         onPress: async () => {
-          // Clear at minimum the token; add more keys if desired
-          await AsyncStorage.removeItem('token');
+          await AsyncStorage.multiRemove([
+            'token',
+            'user',
+            'mobile',
+            'email',
+            'firstName',
+            'lastName',
+            'role',
+            'isVerify',
+          ]);
+
           setIsLoggedIn(false);
         },
       },
@@ -111,16 +118,17 @@ export default function ProfileScreen({ setIsLoggedIn }) {
   }, [setIsLoggedIn]);
 
   const initials =
-    (profile.name || '')
+    profile.name
       .split(' ')
       .filter(Boolean)
       .slice(0, 2)
-      .map(s => (s && s[0] ? s[0].toUpperCase() : ''))
+      .map(s => s[0]?.toUpperCase() || '')
       .join('') || 'U';
 
   const prettyRole =
-    (profile.role && profile.role[0].toUpperCase() + profile.role.slice(1)) ||
-    '—';
+    profile.role
+      ? profile.role[0].toUpperCase() + profile.role.slice(1)
+      : '—';
 
   return (
     <ScrollView

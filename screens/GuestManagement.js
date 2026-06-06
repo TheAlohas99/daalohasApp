@@ -3,12 +3,12 @@ import React from "react";
 import { View } from "react-native";
 import WebView from "react-native-webview";
 
-export default function GuestScreen({ route }) {
+export default function GuestManagement({ route }) {
   const { reservationId } = route.params || {};
   // console.log(route)
-  const url = `https://www.daalohas.com/guest-checkin?reservationId=${encodeURIComponent(
+  const url = `https://www.daalohas.com/guest-management-app?reservationId=${encodeURIComponent(
     reservationId ?? ""
-  )}`;
+  )}&action=checkin`;
 
   
 

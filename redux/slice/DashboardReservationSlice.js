@@ -1,24 +1,24 @@
-// redux/slice/DashboardReservation.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const baseUrl = 'https://api.daalohas.com';
+import { apiFetch } from '../../utils/api';
 
 /* -------------------- helpers -------------------- */
-const resId = (r) =>
+const resId = r =>
   String(
     r?._id ??
-    r?.id ??
-    r?.reservation_id ??
-    r?.booking_id ??
-    r?.invoice_id ??
-    `${r?.check_in_date}-${r?.check_out_date}-${r?.guest_name || ''}-${r?.propertyId || ''}`
+      r?.id ??
+      r?.reservation_id ??
+      r?.booking_id ??
+      r?.invoice_id ??
+      `${r?.check_in_date}-${r?.check_out_date}-${r?.guest_name || ''}-${
+        r?.propertyId || ''
+      }`,
   );
 
 const dedupeById = (arr = []) => {
   const seen = new Set();
-  return arr.filter((r) => {
+  return arr.filter(r => {
+    if (!r) return false;
     const id = resId(r);
     if (seen.has(id)) return false;
     seen.add(id);
@@ -26,69 +26,105 @@ const dedupeById = (arr = []) => {
   });
 };
 
-/* -------------------- thunk: /by-dates -------------------- */
+/* -------------------- thunk -------------------- */
 export const fetchReservationsByDates = createAsyncThunk(
   'dashboardreservation/fetchReservationsByDates',
   async ({ start, end, propertyId = 'all' }, { rejectWithValue }) => {
     try {
+      // ✅ FIX 1: check token BEFORE API call
       const token = await AsyncStorage.getItem('token');
-      if (!token) return rejectWithValue('No token found, please log in again');
+
+      if (!token) {
+        return rejectWithValue('SESSION_EXPIRED');
+      }
 
       const params = new URLSearchParams();
+
       if (start) params.set('start', start);
       if (end) params.set('end', end);
-      if (propertyId && propertyId !== 'all') params.set('propertyId', propertyId);
 
-      const { data } = await axios.get(
-        `${baseUrl}/api/v1/reservations/by-dates?${params.toString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      if (propertyId && propertyId !== 'all') {
+        params.set('propertyId', propertyId);
+      }
 
-      // merge + de-dupe for legacy list
+      const url = `https://api.daalohas.com/api/v1/reservations/by-dates?${params.toString()}`;
+
+      const response = await apiFetch(url, {
+        method: 'GET',
+      });
+
+      // ✅ FIX 2: only handle response here (no duplicate logout logic)
+      if (!response) {
+        return rejectWithValue('NETWORK_ERROR');
+      }
+
+      if (response.status === 401) {
+        return rejectWithValue('SESSION_EXPIRED');
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        return rejectWithValue('Invalid server response formatting');
+      }
+
+      if (!response.ok) {
+        return rejectWithValue(
+          data?.message || 'Failed to fetch reservations by dates',
+        );
+      }
+
+      const arrivals = data?.arrivals?.data || [];
+      const departures = data?.departures?.data || [];
+      const stay = data?.stay?.data || [];
+      const cancelled = data?.cancelled?.data || [];
+      const newReservations = data?.newReservations?.data || [];
+
       const merged = [
-        ...(data?.arrivals?.data || []),
-        ...(data?.departures?.data || []),
-        ...(data?.stay?.data || []),
-        ...(data?.cancelled?.data || []),
-        ...(data?.newReservations?.data || []),
+        ...arrivals,
+        ...departures,
+        ...stay,
+        ...cancelled,
+        ...newReservations,
       ];
+
       const legacyReservations = dedupeById(merged);
 
       return {
-        data,                              // bucketed API object
-        reservations: legacyReservations,  // flat list for old UIs
-        count: Number(data?.totalReservations ?? legacyReservations.length ?? 0),
+        data,
+        reservations: legacyReservations,
+        count: Number(
+          data?.totalReservations ?? legacyReservations.length ?? 0,
+        ),
         meta: { start, end, propertyId: propertyId || 'all' },
       };
     } catch (error) {
+      console.error(
+        '[RESERVATION DEBUG] Runtime failure fetching reservations:',
+        error,
+      );
+
       return rejectWithValue(
-        error?.response?.data?.message || 'Failed to fetch reservations by dates'
+        error?.message || 'Failed to fetch reservations by dates',
       );
     }
-  }
+  },
 );
 
 /* -------------------- slice -------------------- */
-/** IMPORTANT: we'll mount this reducer under key 'dashboardreservation' in the store */
 const dashboardReservationSlice = createSlice({
   name: 'dashboardreservation',
   initialState: {
-    data: null,            // full /by-dates response (buckets)
-    reservations: [],      // flat, de-duped array (legacy)
+    data: null,
+    reservations: [],
     total: 0,
-
     loading: false,
     error: null,
-
     lastQuery: null,
   },
   reducers: {
-    resetReservations: (state) => {
+    resetReservations: state => {
       state.data = null;
       state.reservations = [];
       state.total = 0;
@@ -97,9 +133,9 @@ const dashboardReservationSlice = createSlice({
       state.loading = false;
     },
   },
-  extraReducers: (builder) => {
+  extraReducers: builder => {
     builder
-      .addCase(fetchReservationsByDates.pending, (state) => {
+      .addCase(fetchReservationsByDates.pending, state => {
         state.loading = true;
         state.error = null;
       })
@@ -112,7 +148,13 @@ const dashboardReservationSlice = createSlice({
       })
       .addCase(fetchReservationsByDates.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload || action.error?.message || 'Request failed';
+
+        if (action.payload === 'SESSION_EXPIRED') {
+          state.error = null;
+        } else {
+          state.error =
+            action.payload || action.error?.message || 'Request failed';
+        }
       });
   },
 });
@@ -120,13 +162,14 @@ const dashboardReservationSlice = createSlice({
 export const { resetReservations } = dashboardReservationSlice.actions;
 export default dashboardReservationSlice.reducer;
 
-/* -------------------- selectors (match screen) -------------------- */
-export const selectDashboardApi = (s) => s?.dashboardreservation?.data;
-export const selectDashboardLoading = (s) => s?.dashboardreservation?.loading;
-export const selectDashboardError = (s) => s?.dashboardreservation?.error;
-export const selectDashboardLegacy = (s) => s?.dashboardreservation?.reservations || [];
-export const selectDashboardTotals = (s) => ({
-  totalBookings: s?.dashboardreservation?.data?.totalBookings ?? 0,
-  totalReservations: s?.dashboardreservation?.data?.totalReservations ??
-                     s?.dashboardreservation?.total ?? 0,
+/* -------------------- selectors -------------------- */
+const ns = state => state?.dashboardreservation || {};
+
+export const selectDashboardApi = s => ns(s).data;
+export const selectDashboardLoading = s => ns(s).loading;
+export const selectDashboardError = s => ns(s).error;
+export const selectDashboardLegacy = s => ns(s).reservations || [];
+export const selectDashboardTotals = s => ({
+  totalBookings: ns(s).data?.totalBookings ?? 0,
+  totalReservations: ns(s).data?.totalReservations ?? ns(s).total ?? 0,
 });
